@@ -26,6 +26,6 @@ The selected Google account's email must be confirmed by Supabase. Display names
 
 ## Verification
 
-Run `node --test --test-isolation=none tests/auth.test.mjs` for redirect and cross-site POST regression checks. The real OAuth flow still requires a configured Supabase project and Google client. Verify account selection, cancelled login, callback success, sign-out, session refresh, and access denial from another account before launch.
+Run `node --test tests/auth.test.mjs` for redirect and cross-site POST regression checks. The real OAuth flow still requires a configured Supabase project and Google client. Verify account selection, cancelled login, callback success, sign-out, session refresh, and access denial from another account before launch.
 
 Official references: [Supabase SSR clients](https://supabase.com/docs/guides/auth/server-side/creating-a-client?queryGroups=framework&framework=nextjs), [Google provider setup](https://supabase.com/docs/guides/auth/social-login/auth-google), [verified getUser](https://supabase.com/docs/reference/javascript/auth-getuser).
