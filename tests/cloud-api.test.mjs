@@ -1,0 +1,93 @@
+﻿import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {readFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import ts from 'typescript';
+import {PGlite} from '@electric-sql/pglite';
+import {createDatabase} from '../lib/database.ts';
+import * as domain from '../lib/domain.mjs';
+import * as creditsDomain from '../lib/credits-domain.mjs';
+const require = createRequire(import.meta.url);
+const owner='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+async function load(path, modules) {
+ const source = await readFile(new URL(path,import.meta.url),'utf8');
+ const code = ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ const exports={}; new Function('require','exports',code)(name=>modules[name]||require(name),exports); return exports;
+}
+test('cloud API completes upload, transcription, editor and export; enforces ownership and job leases', async t=>{
+ const pg=new PGlite();t.after(()=>pg.close());
+ await pg.exec(await readFile(new URL('../supabase/migrations/0001_loofy.sql',import.meta.url),'utf8'));
+ const driver=c=>({unsafe:async(sql,values)=>{const r=await c.query(sql,values);return Object.assign(r.rows,{count:r.affectedRows??r.rows.length})},begin:fn=>c.transaction(tx=>fn(driver(tx)))});
+ const db=createDatabase(driver(pg));
+ const objects=new Map();
+ const bucket={
+  createMultipartUpload:async()=>({uploadId:'upload-test'}),
+  resumeMultipartUpload:(key)=>({signPart:async(n)=>({url:'https://storage.example/part',partNumber:n}),complete:async()=>objects.set(key,{size:1000}),abort:async()=>{}}),
+  head:async key=>objects.get(key)||null,
+  signedGet:async key=>'https://storage.example/'+key,
+  list:async()=>({objects:[],truncated:false}),delete:async()=>{}
+ };
+ class HttpError extends Error {constructor(status,message){super(message);this.status=status}}
+ let current=owner;
+ const server={db:()=>db,bindings:()=>({DB:db,BUCKET:bucket,PROCESSOR_TOKEN:'test-secret',ADMIN_USER_IDS:''}),HttpError,
+ user:async()=>({userId:current,email:'test@example.test',fullName:null}),
+ project:async(id,o)=>{const p=await db.prepare("SELECT * FROM projects WHERE id=? AND owner=? AND status<>'deleting'").bind(id,o).first();if(!p)throw new HttpError(404,'Not found');return p},
+ event:async(o,name,value=null)=>db.prepare('INSERT INTO events(owner,name,value,created) VALUES(?,?,?,?)').bind(o,name,value,Date.now()).run(),
+ media:async(r,key)=>new Response(null,{status:307,headers:{Location:await bucket.signedGet(key)}}),removeProject:async()=>{}};
+ const credits=await load('../lib/credits.ts',{'./server':server,'./credits-domain.mjs':creditsDomain});
+ const billing=await load('../lib/billing-api.ts',{'./server':server,'./credits':credits});
+ const route=await load('../app/api/[...path]/route.ts',{'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
+ async function call(path,method='GET',body,headers={}){
+  const r=await route[method](new Request('https://app.example/api/'+path,{method,headers:{Origin:'https://app.example',...headers},...(body===undefined?{}:{body:JSON.stringify(body)})}));
+  return {status:r.status,data:r.status===307?r.headers.get('location'):await r.json()};
+ }
+ const pid=crypto.randomUUID();
+ let r=await call('projects','POST',{name:'test.mp4',size:1000,duration:30,language:'en',youtube:'',rights:true},{'Idempotency-Key':pid});
+ assert.equal(r.status,201,JSON.stringify(r));
+ assert.equal((await call('projects','POST',{name:'test.mp4',size:1000,duration:30,language:'en',rights:true},{'Idempotency-Key':pid})).data.id,pid);
+ assert.equal((await call(`projects/${pid}/part/1`,'POST',{size:1000})).status,200);
+ assert.equal((await call(`projects/${pid}/complete`,'POST',{parts:[{partNumber:1,etag:'part'}]})).status,200);
+ const auth={Authorization:'Bearer test-secret'};
+ const job=(await call('worker/claim','POST',undefined,auth)).data.job;
+ assert.equal(job.project,pid);
+ const jobHeaders={...auth,'X-Job-Token':job.token};
+ assert.equal((await call(`worker/jobs/${pid}/source`,'GET',undefined,jobHeaders)).data.url,`https://storage.example/${pid}/source`);
+ assert.equal((await call(`worker/jobs/${pid}/heartbeat`,'POST',{progress:10,stage:'transcribing'},jobHeaders)).status,200);
+ assert.equal((await call(`worker/jobs/${pid}/finish`,'POST',{duration:30,language:'en',words:Array.from({length:30},(_,i)=>({start:i,end:i+0.8,text:'hello'}))},jobHeaders)).status,200);
+ const project=(await call(`projects/${pid}`)).data;
+ assert.ok(project.clips.length>0);
+ const cid=project.clips[0].id;
+ assert.equal((await call('projects')).data.projects[0].clipCount,project.clips.length);
+ const exp=await call(`clips/${cid}/export`,'POST');assert.equal(exp.status,201,JSON.stringify(exp));
+ assert.equal((await call(`clips/${cid}/export`,'POST')).data.id,exp.data.id);
+ const exportJob=(await call('worker/claim','POST',undefined,auth)).data.job;
+ const exportAuth={...auth,'X-Job-Token':exportJob.token};
+ for(const [action,body] of [['output-start',undefined],['output-part/1',{size:1000}],['output-complete',{parts:[{partNumber:1,etag:'part'}]}],['finish',{}]]){
+  const r=await call(`worker/jobs/${exportJob.id}/${action}`,'POST',body,exportAuth);assert.equal(r.status,200,JSON.stringify(r));
+ }
+ assert.equal((await call(`exports/${exportJob.id}`)).status,307);
+
+ // An interrupted export must retain its storage reservation until removal is confirmed.
+ const failed=await call(`clips/${cid}/export`,'POST');
+ await db.prepare("UPDATE jobs SET status='running',lease=1,attempts=3 WHERE id=?").bind(failed.data.id).run();
+ await call('worker/claim','POST',undefined,auth);
+ assert.equal((await db.prepare('SELECT size FROM jobs WHERE id=?').bind(failed.data.id).first()).size,1073741824);
+ // Deleting rows stay owner-visible, and DELETE can be retried after R2 failure.
+ await db.prepare("UPDATE projects SET status='deleting' WHERE id=?").bind(pid).run();
+ assert.equal((await call('projects')).data.projects.length,1);
+ assert.equal((await call(`projects/${pid}`,'DELETE')).status,200);
+ await db.prepare("UPDATE projects SET status='ready' WHERE id=?").bind(pid).run();
+ const yid=crypto.randomUUID();
+ assert.equal((await call('projects/youtube','POST',{url:'https://www.youtube.com/watch?v=dQw4w9WgXcQ',language:'id',rights:true},{'Idempotency-Key':yid})).status,201);
+ const yjob=(await call('worker/claim','POST',undefined,auth)).data.job;
+ const yh={...auth,'X-Job-Token':yjob.token};
+ assert.equal((await call(`worker/jobs/${yid}/import-prepare`,'POST',{duration:120,name:'YouTube fixture'},yh)).status,200);
+ assert.equal((await call(`worker/jobs/${yid}/import-part/1`,'POST',{size:1000},yh)).status,200);
+ assert.equal((await call(`worker/jobs/${yid}/import-complete`,'POST',{parts:[{partNumber:1,etag:'part'}]},yh)).status,200);
+ assert.equal((await call('billing','POST',{plan:'creator'})).status,403);
+ current='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ assert.equal((await call(`projects/${pid}`)).status,404);
+ assert.equal((await call(`exports/${exportJob.id}`)).status,404);
+ assert.equal((await call('admin')).status,403);
+ assert.equal((await call(`worker/jobs/${pid}/source`,'GET',undefined,{...auth,'X-Job-Token':'stale'})).status,409);
+});

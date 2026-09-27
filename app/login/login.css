@@ -1,0 +1,10 @@
+.login-screen{min-height:100dvh;display:grid;place-items:center;padding:28px;background:radial-gradient(ellipse at 50% 0%,#d7ee0010,transparent 60%),#0b0d12;color:#f5f6f8}
+.login-card{width:min(100%,490px);border:1px solid #292c36;border-radius:24px;padding:40px;background:#11131ad9;box-shadow:0 30px 100px #0005}
+.login-brand{display:inline-flex;margin-bottom:42px;text-decoration:none;color:inherit;font-size:24px;font-weight:700;gap:12px;align-items:center}
+.login-card h1{font-size:clamp(30px,5vw,39px);line-height:1.15;letter-spacing:-1px;margin:16px 0}
+.login-intro,.login-note,.login-existing p{color:#a8b0bf;line-height:1.65}
+.login-intro{margin-bottom:28px}.login-note{font-size:12px;margin:18px 0 0}.login-existing{margin-bottom:24px}.login-existing a{text-decoration:none;display:inline-flex;gap:10px;align-items:center}
+.login-card .notice{display:block;line-height:1.6;margin:18px 0}.login-card .notice p{margin:8px 0 0}.login-card .eyebrow{color:#d7ee00}
+.google-login{display:flex;align-items:center;justify-content:center;gap:12px;min-height:50px;width:100%;border:1px solid #b7bdc6;border-radius:8px;background:white;color:#202124;font-size:15px;font-weight:600;cursor:pointer;padding:12px 16px}
+.google-login:hover{background:#eef0f3}.login-card :is(a,button):focus-visible{outline:3px solid #d7ee00;outline-offset:5px}
+@media(max-width:540px){.login-screen{padding:16px}.login-card{padding:28px 22px}.login-brand{margin-bottom:30px}}
