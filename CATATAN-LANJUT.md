@@ -1,4 +1,4 @@
-﻿# Catatan migrasi cloud
+# Catatan migrasi cloud
 
 Source cloud berada di folder ini. Source localhost lama tetap terpisah.
 
@@ -16,8 +16,17 @@ Verifikasi lokal:
 - FFmpeg smoke: 9:16, 1:1, 16:9; H.264 + AAC. Video sintetis, bukan tes akurasi transkripsi.
 
 Belum terverifikasi di provider:
-- Login Google nyata, R2 CORS dan upload live, deploy Vercel, transkripsi English/Indonesian dari cloud, unduhan YouTube eksternal.
+- Login Google nyata, R2 CORS dan upload live, transkripsi English/Indonesian dari cloud, unduhan YouTube eksternal.
 - Kredensial/provider environment belum tersedia. Ikuti docs/DEPLOY.md.
 - Supabase Auth identity deletion/backup expiry dan benchmark concurrency tetap pekerjaan launch.
 
 Keputusan implementasi: reservasi failed export dipertahankan sampai project dihapus, karena output R2 mungkin sudah selesai sebelum koneksi worker terputus. Lebih konservatif terhadap storage daripada membebaskan kuota yang belum terbukti kosong.
+
+
+Update deployment 2026-09-28:
+- Production: https://loopyclipper.vercel.app (Vercel project pansydontcry-5699/loopyclipper).
+- Deployment READY; GET / redirects to /login with HTTP 200. GET /api/account without session returns 401.
+- Login page correctly reports Supabase configuration missing. Upload/processing not yet connected to real cloud services.
+- GitHub main includes fed1d26: Node 22 test runner compatibility and Vercel JSON BOM fix. GitHub Actions run 36405086751 succeeded.
+- Vercel CLI authenticated. Git automatic deployment NOT connected: Vercel requires linking the GitHub account under Login Connections. Current deployment was sent directly by CLI.
+- Next: configure Supabase Google OAuth/Postgres migration, private R2 CORS/credentials, PROCESSOR_TOKEN and worker. Do not place secrets in this document or git.
