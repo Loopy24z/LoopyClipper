@@ -73,3 +73,4 @@ Update preview video:
 - Processor kini memilih H.264 lebih dahulu untuk YouTube dan mengonversi codec lain ke H.264/yuv420p + AAC sebelum upload. Validasi durasi <=0.5 detik dan batas 2 GB sebelum mengganti file lokal; 8 tes processor lulus termasuk konversi FFmpeg nyata.
 - Worker diperbarui saat semua job complete, PID baru saat dimulai 24544. Verifikasi ulang sebelum menghentikan/restart.
 - Backup source lama ada di work/preview-repair/original-av1.mp4. Konversi repair ke work/preview-repair/repaired.mp4 sedang dilakukan; periksa hasil dan upload R2 sebelum menyatakan playback selesai. Transkrip/5 klip tidak perlu dibuat ulang.
+- Repair selesai: file H.264/yuv420p + AAC berhasil menggantikan source R2 (357775675 byte; durasi 1910.931995 detik, berbeda <0.001 detik). Size project diperbarui; transcript dan klip dipertahankan. Signed range GET ulang 206 dan ffprobe remote lulus. Playback aktual di browser pengguna masih perlu konfirmasi setelah reload.
