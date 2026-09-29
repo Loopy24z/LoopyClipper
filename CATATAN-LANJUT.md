@@ -66,3 +66,10 @@ Update koneksi clipping 2026-09-29:
 - Processor berjalan tersembunyi (PID saat mulai 9668) menggunakan work/processor-venv/Scripts/python.exe processor/worker.py; log lokal work/processor-cloud.log dan work/processor-cloud-error.log. Bergantung komputer tetap menyala. Verifikasi PID/heartbeat ulang saat melanjutkan.
 - Langkah berikut: pengguna refresh website lalu Retry processing pada project lama. Pantau sampai transcript/suggestions siap, lalu uji ekspor cloud.
 - .vercelignore ditambahkan supaya env lokal, cache model, venv, dan processor tidak ikut upload deployment web. Git auto-deploy masih belum tersambung.
+
+Update preview video:
+- Project YouTube selesai: transcript dan 5 draft clip tersedia. Source R2 226669741 byte, AV1 + AAC, durasi 1910.93 detik. Signed range GET 206 dan CORS origin produksi benar; pengguna tetap gagal playback setelah refresh.
+- Editor diperbaiki agar video tidak meminta source sebelum project ready, lalu remount ketika ready. Build lulus; commit ec25362 dideploy READY sebagai dpl_tn78hAa45VkttKKVQukzX9k5RgyZ.
+- Processor kini memilih H.264 lebih dahulu untuk YouTube dan mengonversi codec lain ke H.264/yuv420p + AAC sebelum upload. Validasi durasi <=0.5 detik dan batas 2 GB sebelum mengganti file lokal; 8 tes processor lulus termasuk konversi FFmpeg nyata.
+- Worker diperbarui saat semua job complete, PID baru saat dimulai 24544. Verifikasi ulang sebelum menghentikan/restart.
+- Backup source lama ada di work/preview-repair/original-av1.mp4. Konversi repair ke work/preview-repair/repaired.mp4 sedang dilakukan; periksa hasil dan upload R2 sebelum menyatakan playback selesai. Transkrip/5 klip tidak perlu dibuat ulang.

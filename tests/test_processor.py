@@ -1,11 +1,25 @@
 import importlib.util
 import pathlib
 import unittest
+import tempfile
+import subprocess
+import json
 spec=importlib.util.spec_from_file_location('processor',pathlib.Path(__file__).parents[1]/'processor'/'worker.py')
 processor=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(processor)
 
 class ProcessorTests(unittest.TestCase):
+ def test_browser_source_converts_incompatible_video_without_changing_duration(self):
+  with tempfile.TemporaryDirectory() as folder:
+   source=pathlib.Path(folder)/'source.mp4'
+   subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','color=s=160x90:r=24:d=1','-f','lavfi','-i','sine=duration=1','-c:v','mpeg4','-c:a','aac','-shortest',str(source)],check=True)
+   processor.prepare_browser_source(source)
+   data=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-show_format','-of','json',str(source)]))
+   self.assertEqual([s['codec_name'] for s in data['streams']],['h264','aac'])
+   self.assertAlmostEqual(float(data['format']['duration']),1,delta=0.1)
+   before=source.read_bytes()
+   processor.prepare_browser_source(source)
+   self.assertEqual(source.read_bytes(),before)
  def test_subtitles_clip_and_escape_text(self):
   words=[{'start':9,'end':10.4,'text':'before'},{'start':10.4,'end':11,'text':'<hello>'},{'start':11,'end':12,'text':'world'},{'start':13,'end':14,'text':'after'}]
   clip={'start':10,'end':12,'captionText':None}

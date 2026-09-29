@@ -19,6 +19,29 @@ import copy
 MODEL = None
 PART_SIZE = 8 * 1024 * 1024
 
+def prepare_browser_source(source):
+    """Normalize downloaded media before publishing it for browser playback."""
+    def inspect(path):
+        return json.loads(subprocess.check_output([os.getenv('FFPROBE', 'ffprobe'), '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(path)]))
+    original = inspect(source)
+    videos = [s for s in original['streams'] if s['codec_type'] == 'video']
+    audio = [s for s in original['streams'] if s['codec_type'] == 'audio']
+    if not videos:
+        raise ValueError('The source has no playable video track.')
+    if videos[0]['codec_name'] == 'h264' and videos[0].get('pix_fmt') == 'yuv420p' and (not audio or audio[0]['codec_name'] == 'aac'):
+        return
+    normalized = source.with_name('browser-compatible.mp4')
+    try:
+        subprocess.run([os.getenv('FFMPEG', 'ffmpeg'), '-hide_banner', '-loglevel', 'error', '-y', '-protocol_whitelist', 'file,pipe', '-i', str(source), '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', str(normalized)], check=True, timeout=7200)
+        converted = inspect(normalized)
+        if abs(float(converted['format']['duration']) - float(original['format']['duration'])) > 0.5:
+            raise ValueError('Video conversion changed its duration. Retry or upload the original file.')
+        if normalized.stat().st_size > 2 * 1024**3:
+            raise ValueError('The browser-compatible video exceeds 2 GB. Upload a smaller video.')
+        normalized.replace(source)
+    finally:
+        normalized.unlink(missing_ok=True)
+
 def dimensions(ratio):
     sizes = {'9:16': (1080, 1920), '1:1': (1080, 1080), '16:9': (1920, 1080)}
     if ratio not in sizes:
@@ -179,7 +202,7 @@ def process(client, job):
                     if progress.get('downloaded_bytes', 0) > 2*1024**3:
                         raise ValueError('The YouTube source exceeds 2 GB. Upload a smaller original video.')
                 options = {'quiet': True, 'logger': Quiet(), 'noplaylist': True, 'socket_timeout': 30, 'retries': 2,
-                           'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+                           'format': 'bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=1080][vcodec^=avc1][ext=mp4]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]',
                            'outtmpl': str(source), 'merge_output_format': 'mp4', 'max_filesize': 2*1024**3,
                            'js_runtimes': {'node': {}}, 'progress_hooks': [limit]}
                 try:
@@ -194,6 +217,7 @@ def process(client, job):
                         downloader.download([job['payload']['youtube']])
                     if not source.exists() or source.stat().st_size > 2*1024**3:
                         raise ValueError('The video could not be downloaded within the 2 GB limit. Upload the original file.')
+                    prepare_browser_source(source)
                     parts = []
                     with source.open('rb') as stream:
                         while chunk := stream.read(PART_SIZE):
