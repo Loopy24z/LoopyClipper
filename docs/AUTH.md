@@ -15,12 +15,28 @@ The selected Google account's email must be confirmed by Supabase. Display names
 
 ## Routes and integration
 
-- `GET /login`: account chooser entry page; displays a setup-needed state when configuration is absent.
+- `GET /login`: account chooser entry page; checks the public Supabase provider settings before offering Google sign-in. Missing configuration or a disabled Google provider shows setup-needed; network failures show a retry message. Existing verified sessions can still continue to the workspace.
 - `POST /auth/google`: starts Google OAuth with `prompt=select_account` and PKCE. A `next` form field can name an internal application path.
 - `GET /auth/callback`: exchanges the one-use code using the browser's PKCE verifier cookie and redirects to a safe internal path.
 - `POST /auth/signout`: ends this browser's session. Use a normal same-origin POST form; sign-out is not a GET link.
 - `getCurrentUser()` from `lib/auth.ts`: returns `{ userId, email, fullName, displayName }` only after `auth.getUser()` verifies the session and confirmed email.
 - `isAuthConfigured()` from `lib/auth.ts`: reports public auth configuration availability without calling the database.
+
+The Google POST route also checks provider availability, so a stale page cannot send the creator into a known-disabled provider. This availability check is not authentication and does not validate Google client credentials or the callback allowlist.
+
+## Current production setup
+
+For the LoopyClipper deployment, use these exact values:
+
+| Setting | Value |
+| --- | --- |
+| Google authorized JavaScript origin | `https://loopyclipper.vercel.app` |
+| Google authorized redirect URI | `https://vrimtaefxeqavlfkhuyw.supabase.co/auth/v1/callback` |
+| Supabase Site URL | `https://loopyclipper.vercel.app` |
+| Supabase allowed app callback | `https://loopyclipper.vercel.app/auth/callback**` |
+| Optional local app callback | `http://localhost:5174/auth/callback**` |
+
+Create a Web application OAuth client in Google Cloud. Enter the client ID and secret directly in this project's Supabase Google provider settings. If Google is in testing mode, add the intended Google account as a test user. These are setup values, not evidence that live login has passed.
 
 `proxy.ts` refreshes and validates auth cookies. Every protected API must independently call `getCurrentUser()`; the proxy is not authorization. OAuth redirects use `NEXT_PUBLIC_APP_URL`, never forwarded host headers. Login and sign-out POST routes check the request Origin. Redirect targets cannot be external or an auth endpoint. Session-bearing responses are marked private/no-store.
 

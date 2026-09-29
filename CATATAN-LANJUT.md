@@ -41,3 +41,9 @@ Update Supabase/Vercel 2026-09-29:
 - Callback site_url/redirect sudah disiapkan lokal tetapi BELUM dipush; config diff juga mendeteksi perubahan Twilio yang tidak diminta, sehingga dihentikan. Selesaikan hanya site_url dan redirect allowlist melalui dashboard/API tanpa mengubah SMS.
 - R2 belum terhubung dan worker belum dijalankan. CLI Cloudflare belum authenticated pada pemeriksaan terakhir.
 - File supabase/config.toml dan supabase/.temp diabaikan Git karena merupakan konfigurasi deployment lokal. Jangan commit credential.
+
+Update login dan clipping 2026-09-29:
+- Wrangler device login berhasil. Akun Cloudflare aktif di CLI: verifmlbb629@gmail.com, account b42389e0d82517d9f6c2543d0330b4e4.
+- R2 bucket list masih gagal dengan code 10042 (Please enable R2), termasuk pemeriksaan ulang setelah pengguna menyatakan sudah aktif. Konfirmasi akun dashboard dan apakah tombol Create bucket sudah tersedia. Belum membuat bucket atau menjalankan worker cloud.
+- Halaman login dan POST Google kini mengecek provider remote. Provider disabled menampilkan setup-needed; gangguan koneksi menampilkan pesan retry. Tidak ada bypass identitas/admin.
+- 23 tes Node lulus; panduan docs/AUTH.md berisi origin/callback produksi yang tepat. Login Google nyata tetap menunggu OAuth Client ID/Secret di Supabase dan URL Configuration.
