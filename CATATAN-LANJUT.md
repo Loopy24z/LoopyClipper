@@ -57,3 +57,12 @@ Update lanjutan setelah aktivasi R2:
 - Jalankan processor setelah R2 cloud tersambung: .\work\processor-venv\Scripts\python.exe processor/worker.py (dari folder source cloud). Worker belum dijalankan untuk mengambil job produksi.
 - Commit 9111460 dipush dan dideploy: dpl_5igy6gy7LiNGQcFyrzrZ2Yx4mLNj READY. Live /login 200 dan setup notice terlihat; POST /auth/google 303 kembali ke not_configured; /api/account tanpa sesi 401.
 - Tersisa: isi Google OAuth di Supabase, Site URL/redirect allowlist, isi kredensial R2 lalu upload ke Vercel dan redeploy; uji login nyata sebelum grant UUID admin. Git auto-deploy tetap perlu Vercel Login Connection.
+
+Update koneksi clipping 2026-09-29:
+- Pengguna sudah berhasil login Google. Kredensial R2 baru di .env.local valid: list HTTP 200, write/read signed URL dan CORS origin produksi lulus; objek diagnostik dibersihkan.
+- Empat env R2 sudah disimpan ke Vercel production (dua key sebagai secret). Deployment terbaru dpl_2TAQu37xeK4TM8CL9d7Vi31Y87qB READY.
+- Processor mengambil project YouTube yang antre, tetapi import-prepare gagal karena kredit tidak cukup. Belum ada bukti kegagalan download YouTube; jangan menyebut alur cloud clipping selesai.
+- Akun pansydontcry@gmail.com diverifikasi langsung di auth.users: email confirmed, provider google, memiliki project. UUID akun ini kini masuk ADMIN_USER_IDS lokal dan Vercel sesuai permintaan admin sebelumnya; deployment terbaru membawa konfigurasi tersebut.
+- Processor berjalan tersembunyi (PID saat mulai 9668) menggunakan work/processor-venv/Scripts/python.exe processor/worker.py; log lokal work/processor-cloud.log dan work/processor-cloud-error.log. Bergantung komputer tetap menyala. Verifikasi PID/heartbeat ulang saat melanjutkan.
+- Langkah berikut: pengguna refresh website lalu Retry processing pada project lama. Pantau sampai transcript/suggestions siap, lalu uji ekspor cloud.
+- .vercelignore ditambahkan supaya env lokal, cache model, venv, dan processor tidak ikut upload deployment web. Git auto-deploy masih belum tersambung.

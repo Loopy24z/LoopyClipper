@@ -1,0 +1,11 @@
+.env*
+**/.env*
+work/
+processor/
+tests/
+scripts/render-smoke.py
+supabase/.temp/
+supabase/config.toml
+**/__pycache__/
+*.log
+*.tsbuildinfo
