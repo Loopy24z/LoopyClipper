@@ -30,3 +30,14 @@ Update deployment 2026-09-28:
 - GitHub main includes fed1d26: Node 22 test runner compatibility and Vercel JSON BOM fix. GitHub Actions run 36405086751 succeeded.
 - Vercel CLI authenticated. Git automatic deployment NOT connected: Vercel requires linking the GitHub account under Login Connections. Current deployment was sent directly by CLI.
 - Next: configure Supabase Google OAuth/Postgres migration, private R2 CORS/credentials, PROCESSOR_TOKEN and worker. Do not place secrets in this document or git.
+
+
+Update Supabase/Vercel 2026-09-29:
+- Supabase project loopyclipper: vrimtaefxeqavlfkhuyw, Singapore. Organization: LoopyClipper.
+- Migrasi 0001_loofy.sql sudah diterapkan. Verifikasi live: 14 tabel public, 14 RLS aktif, 0 browser grants untuk anon/authenticated.
+- NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY dan DATABASE_URL sudah disimpan di Vercel production. DATABASE_URL disimpan sebagai secret setelah izin eksplisit pemilik.
+- Deployment dpl_HE5iWqzB26Aa91Vrq6Py9St6e5Aw READY di https://loopyclipper.vercel.app. GET /login 200; GET /api/account tanpa login 401.
+- Provider Google masih disabled (diperiksa lewat Auth settings). Tombol login sekarang tampil tetapi login Google belum dapat digunakan sampai OAuth Client ID/Secret diisi di Supabase.
+- Callback site_url/redirect sudah disiapkan lokal tetapi BELUM dipush; config diff juga mendeteksi perubahan Twilio yang tidak diminta, sehingga dihentikan. Selesaikan hanya site_url dan redirect allowlist melalui dashboard/API tanpa mengubah SMS.
+- R2 belum terhubung dan worker belum dijalankan. CLI Cloudflare belum authenticated pada pemeriksaan terakhir.
+- File supabase/config.toml dan supabase/.temp diabaikan Git karena merupakan konfigurasi deployment lokal. Jangan commit credential.

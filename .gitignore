@@ -9,3 +9,5 @@ __pycache__/
 *.tsbuildinfo
 work/
 *.log
+supabase/.temp/
+supabase/config.toml
