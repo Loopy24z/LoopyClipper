@@ -56,6 +56,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call(`worker/jobs/${pid}/finish`,'POST',{duration:30,language:'en',words:Array.from({length:30},(_,i)=>({start:i,end:i+0.8,text:'hello'}))},jobHeaders)).status,200);
  const project=(await call(`projects/${pid}`)).data;
  assert.ok(project.clips.length>0);
+ assert.ok(project.clips.every(c=>c.data.ratio==='9:16' && c.data.fit==='cover'),'automatic clips fill the vertical frame');
  const cid=project.clips[0].id;
  assert.equal((await call('projects')).data.projects[0].clipCount,project.clips.length);
  const exp=await call(`clips/${cid}/export`,'POST');assert.equal(exp.status,201,JSON.stringify(exp));

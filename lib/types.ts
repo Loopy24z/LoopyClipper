@@ -51,6 +51,6 @@ export type Project = {
     jobs: Job[];
 };
 export const timestamp = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
-export const defaults = (duration: number): ClipData => ({ title: 'Untitled clip', description: '', start: 0, end: Math.min(45, duration), ratio: '9:16', fit: 'contain', position: 50, captions: true, fontSize: 36, color: '#ffffff', background: '#000000', captionText: null });
+export const defaults = (duration: number): ClipData => ({ title: 'Untitled clip', description: '', start: 0, end: Math.min(45, duration), ratio: '9:16', fit: 'cover', position: 50, captions: true, fontSize: 36, color: '#ffffff', background: '#000000', captionText: null });
 export async function api(path: string, options: RequestInit = {}): Promise<any> { const response = await fetch('/api/' + path, { ...options, headers: { ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}), ...options.headers } }); const data: any = await response.json(); if (!response.ok)
     throw Error(data.error || 'Please try again.'); return data; }

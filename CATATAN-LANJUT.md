@@ -74,3 +74,9 @@ Update preview video:
 - Worker diperbarui saat semua job complete, PID baru saat dimulai 24544. Verifikasi ulang sebelum menghentikan/restart.
 - Backup source lama ada di work/preview-repair/original-av1.mp4. Konversi repair ke work/preview-repair/repaired.mp4 sedang dilakukan; periksa hasil dan upload R2 sebelum menyatakan playback selesai. Transkrip/5 klip tidak perlu dibuat ulang.
 - Repair selesai: file H.264/yuv420p + AAC berhasil menggantikan source R2 (357775675 byte; durasi 1910.931995 detik, berbeda <0.001 detik). Size project diperbarui; transcript dan klip dipertahankan. Signed range GET ulang 206 dan ffprobe remote lulus. Playback aktual di browser pengguna masih perlu konfirmasi setelah reload.
+
+Update framing 2026-10-02:
+- Pengguna mengonfirmasi playback berhasil dan meminta video memenuhi frame vertical, tanpa letterbox.
+- Default klip manual dan saran otomatis/refresh berubah dari contain ke cover (9:16, posisi tengah). Pilihan fit tetap tersedia dengan label yang menjelaskan bar; posisi crop horizontal tetap dapat disetel.
+- Lima klip 9:16 contain milik pengguna di project 401944b1-69ec-49f8-973c-5e85072b2e7d diubah menjadi cover. Data framing sebelumnya dibackup ke work/backups/framing-*.json; transkrip, timing, caption, dan posisi dipertahankan.
+- 23 tes Node lulus; uji FFmpeg nyata 1080x1920 memverifikasi piksel atas/tengah/bawah terisi video tanpa bar hitam pada fixture horizontal.
