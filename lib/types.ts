@@ -15,6 +15,10 @@ export type ClipData = {
     fontSize: number;
     font?: string;
     textEffect?: string;
+    wordsPerCaption?: number;
+    captionPosition?: string;
+    highlightColor?: string;
+    segments?: {start:number;end:number}[];
     color: string;
     background: string;
     captionText?: string | null;

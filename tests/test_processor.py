@@ -9,6 +9,34 @@ processor=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(processor)
 
 class ProcessorTests(unittest.TestCase):
+ def test_jump_cut_render_and_caption_timing(self):
+  clip={'start':0,'end':3,'segments':[{'start':0,'end':1},{'start':2,'end':3}],'ratio':'9:16','fit':'cover','position':50,'captions':True,'fontSize':52,'color':'#ffffff','background':'#000000','textEffect':'highlight','font':'lato','wordsPerCaption':3}
+  words=[{'start':0,'end':.8,'text':'hello'},{'start':1.2,'end':1.8,'text':'REMOVED'},{'start':2,'end':2.9,'text':'next'}]
+  captions=processor.subtitle_text(words,clip)
+  self.assertNotIn('REMOVED',captions)
+  self.assertIn('00:00:01,000 --> 00:00:01,900',captions)
+  ass=processor.ass_subtitles(words,clip)
+  self.assertIn('Lato',ass)
+  self.assertIn('0:00:01.00,0:00:01.90',ass)
+  with tempfile.TemporaryDirectory() as folder:
+   source=pathlib.Path(folder)/'source.mp4'
+   subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','testsrc2=s=160x90:r=30:d=3','-f','lavfi','-i','sine=duration=3','-c:v','libx264','-c:a','aac','-shortest',str(source)],check=True)
+   for ratio in ['9:16','1:1','16:9']:
+    clip['ratio']=ratio
+    output=pathlib.Path(folder)/'clip.mp4'
+    processor.render(source,output,clip,words,preset='ultrafast')
+    data=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-show_format','-of','json',str(output)]))
+    self.assertAlmostEqual(float(data['format']['duration']),2,delta=.1)
+    self.assertEqual((data['streams'][0]['width'],data['streams'][0]['height']),processor.dimensions(ratio))
+    self.assertEqual([s['codec_name'] for s in data['streams']],['h264','aac'])
+   # Nonzero trim and video-only sources use the same output timeline.
+   silent=pathlib.Path(folder)/'silent.mp4'
+   subprocess.run(['ffmpeg','-v','error','-y','-i',str(source),'-an','-c:v','copy',str(silent)],check=True)
+   clip.update(start=.5,segments=[{'start':.5,'end':1},{'start':2,'end':3}])
+   processor.render(silent,output,clip,words,preset='ultrafast')
+   self.assertAlmostEqual(processor.probe(output)[0],1.5,delta=.1)
+ def test_invalid_segments_fail_closed(self):
+  with self.assertRaises(ValueError):processor.clip_segments({'start':0,'end':4,'segments':[{'start':0,'end':3},{'start':2,'end':4}]})
  def test_browser_source_converts_incompatible_video_without_changing_duration(self):
   with tempfile.TemporaryDirectory() as folder:
    source=pathlib.Path(folder)/'source.mp4'

@@ -80,3 +80,14 @@ Update framing 2026-10-02:
 - Default klip manual dan saran otomatis/refresh berubah dari contain ke cover (9:16, posisi tengah). Pilihan fit tetap tersedia dengan label yang menjelaskan bar; posisi crop horizontal tetap dapat disetel.
 - Lima klip 9:16 contain milik pengguna di project 401944b1-69ec-49f8-973c-5e85072b2e7d diubah menjadi cover. Data framing sebelumnya dibackup ke work/backups/framing-*.json; transkrip, timing, caption, dan posisi dipertahankan.
 - 23 tes Node lulus; uji FFmpeg nyata 1080x1920 memverifikasi piksel atas/tengah/bawah terisi video tanpa bar hitam pada fixture horizontal.
+
+Update caption/pacing trial 2026-10-04:
+- User meminta menerapkan versi yang bisa dicoba, tanpa menunggu tahapan persetujuan rancangan berikutnya.
+- Enam preset caption, lima pilihan font (Lato/Anton dibundel dengan OFL), jumlah kata 1-6, posisi top/center/bottom, dan active-word highlight. Preview DOM dan ASS menggunakan timestamp yang dipetakan ke hasil edit.
+- Clip options: Keep pauses, Natural, Balanced, Tight; kandidat jeda berbasis timestamp transkrip, bukan konfirmasi VAD. Wajib review bagian yang mungkin terlewat transkripsi; jangan klaim pemilihan semantik AI. Cut dapat dipulihkan satu per satu. Mengubah outer trim mereset daftar cut. Klip lama tidak diubah otomatis.
+- Daftar segments tersimpan dan masuk snapshot ekspor. Worker trim/concat audio-video sebelum caption, mendukung video tanpa audio dan progress berdasarkan durasi output. X-Render-Version:2 mencegah worker lama mengonsumsi job render baru.
+- Highlight kini mengikuti kandidat batas kalimat/jeda dan memilih interval yang tidak bertumpuk; refresh tetap eksplisit dan mempertahankan klip reviewed.
+- Tes: 25 Node lulus, 10 Python lulus; FFmpeg nyata menguji cut dan durasi pada ketiga rasio serta video tanpa audio. Build production lulus. Pemeriksaan browser interaktif dengan akun pengguna dan ekspor cloud nyata belum dilakukan untuk versi ini.
+- Worker dinyalakan tersembunyi dengan PID awal 16072; heartbeat produksi kembali aktif. Log work/processor-v2.log dan work/processor-v2-error.log. Bergantung komputer tetap menyala; verifikasi PID saat melanjutkan.
+- Kredit/langganan yang lama tetap berlaku; pembelian masih disabled, belum ada payment gateway. Pertanyaan mode pembayaran belum dijawab. Implementasi ini tidak mengaktifkan tagihan atau paket berbayar.
+- Belum diterapkan dari spec besar: VAD terpersisten, cue editor individual, rendered-preview reuse, semantic model, checkout otomatis. Ini versi uji caption dan pacing yang terbatas, bukan penyelesaian seluruh spec.

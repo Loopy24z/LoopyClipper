@@ -58,18 +58,81 @@ def stamp(seconds):
 def clean_text(text):
     return re.sub(r'[<>\\{}\x00-\x08\x0b-\x1f]', '', text).strip()
 
-def subtitle_text(words, clip):
-    relevant = [w for w in words if w['end'] > clip['start'] and w['start'] < clip['end']]
-    groups = [relevant[i:i+6] for i in range(0, len(relevant), 6)]
+def clip_segments(clip):
+    segments = clip.get('segments') or [{'start': clip['start'], 'end': clip['end']}]
+    if not 1 <= len(segments) <= 200:
+        raise ValueError('Invalid segment count.')
+    previous = clip['start']
+    for segment in segments:
+        start, end = segment['start'], segment['end']
+        if not (previous <= start < end <= clip['end']) or end-start < 0.1:
+            raise ValueError('Invalid clip segment.')
+        previous = end
+    return segments
+
+def caption_groups(words, clip):
+    groups, offset = [], 0
+    count = clip.get('wordsPerCaption', 6)
+    if not isinstance(count, int) or not 1 <= count <= 6:
+        raise ValueError('Invalid caption word count.')
+    for segment in clip_segments(clip):
+        relevant = [dict(w, start=max(segment['start'], w['start'])-segment['start']+offset,
+                         end=min(segment['end'], w['end'])-segment['start']+offset)
+                    for w in words if w['end'] > segment['start'] and w['start'] < segment['end']]
+        groups.extend(relevant[i:i+count] for i in range(0, len(relevant), count))
+        offset += segment['end']-segment['start']
     if clip.get('captionText'):
-        groups = [[{'start': clip['start'], 'end': clip['end'], 'text': clip['captionText']}]]
+        return [[{'start': 0, 'end': offset, 'text': clip['captionText']}]]
+    return groups
+
+def subtitle_text(words, clip):
+    groups = caption_groups(words, clip)
     output = []
     for i, group in enumerate(groups):
-        start = max(0, group[0]['start'] - clip['start'])
-        end = min(clip['end'] - clip['start'], group[-1]['end'] - clip['start'])
+        start = group[0]['start']
+        end = group[-1]['end']
         if end > start:
             output.append(f"{i+1}\n{stamp(start)} --> {stamp(end)}\n{clean_text(' '.join(w['text'] for w in group))}\n")
     return '\n'.join(output)
+
+def ass_subtitles(words, clip):
+    width, height = dimensions(clip['ratio'])
+    def color(value):
+        if not re.fullmatch(r'#[0-9a-fA-F]{6}', value):
+            raise ValueError('Invalid caption color.')
+        return '&H00' + value[5:7] + value[3:5] + value[1:3]
+    def clock(value):
+        ticks = max(0, round(value*100))
+        return f'{ticks//360000}:{ticks//6000%60:02}:{ticks//100%60:02}.{ticks%100:02}'
+    font = {'sans':'Arial','serif':'Times New Roman','mono':'Courier New','lato':'Lato','anton':'Anton'}.get(clip.get('font'), 'Arial')
+    effect = clip.get('textEffect', 'box')
+    size = clip['fontSize']
+    alignment = {'top':8,'center':5,'bottom':2}.get(clip.get('captionPosition'),2)
+    header = f'''[Script Info]
+ScriptType: v4.00+
+PlayResX: {width}
+PlayResY: {height}
+WrapStyle: 0
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,{font},{size},{color(clip['color'])},{color(clip.get('highlightColor','#e5ff00'))},{color(clip['background'])},{color(clip['background'])},{-1 if effect in ('bold','outline','highlight') else 0},0,0,0,100,100,0,0,{3 if effect=='box' else 1},{size*.035 if effect in ('outline','highlight') else 4 if effect=='box' else 0},{size*.035 if effect=='shadow' else 0},{alignment},{round(width*.065)},{round(width*.065)},{round(height*.08)},1
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+'''
+    events = []
+    for group in caption_groups(words,clip):
+        boundaries = sorted(set([group[0]['start'],group[-1]['end']] + ([v for w in group for v in (w['start'],w['end'])] if effect=='highlight' and not clip.get('captionText') else [])))
+        for start,end in zip(boundaries,boundaries[1:]):
+            if end <= start: continue
+            text = []
+            for word in group:
+                value = clean_text(word['text']).replace('\n',' ').replace('\r',' ')
+                if effect=='highlight' and not clip.get('captionText'):
+                    selected = word['start'] <= (start+end)/2 < word['end']
+                    value = '{\\c'+color(clip.get('highlightColor','#e5ff00') if selected else clip['color'])+'}'+value
+                text.append(value)
+            events.append(f"Dialogue: 0,{clock(start)},{clock(end)},Default,,0,0,0,,{' '.join(text)}")
+    return header+'\n'.join(events)+'\n'
 
 def probe(source):
     result = subprocess.run([os.getenv('FFPROBE', 'ffprobe'), '-v', 'error', '-protocol_whitelist', 'file,pipe', '-show_format', '-show_streams', '-of', 'json', str(source)], capture_output=True, text=True, timeout=60, check=True)
@@ -88,20 +151,30 @@ def render(source, output, clip, words, preset=None, progress_file=None):
         framing = f'scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black'
     filters = framing + ',setsar=1'
     if clip['captions']:
-        subtitles = subtitle_text(words, clip)
+        subtitles = ass_subtitles(words, clip)
         if subtitles:
-            (output.parent / 'captions.srt').write_text(subtitles, encoding='utf-8')
-            def color(value):
-                return '&H00' + value[5:7] + value[3:5] + value[1:3]
-            font = {'sans':'Arial','serif':'Times New Roman','mono':'Courier New'}.get(clip.get('font','sans'),'Arial')
-            effect = clip.get('textEffect','box')
-            border = 3 if effect == 'box' else 1
-            outline = 1 if effect == 'box' else 0.7 if effect == 'outline' else 0
-            shadow = 0.7 if effect == 'shadow' else 0
-            bold = -1 if effect == 'bold' else 0
-            style = f"FontName={font},Bold={bold},FontSize={float(clip['fontSize'])*288/height},PrimaryColour={color(clip['color'])},BackColour={color(clip['background'])},OutlineColour={color(clip['background'])},BorderStyle={border},Outline={outline},Shadow={shadow},Alignment=2,MarginV=23,MarginL=19,MarginR=19"
-            filters += f",subtitles=captions.srt:force_style='{style}'"
+            (output.parent / 'captions.ass').write_text(subtitles, encoding='utf-8')
+            fonts = output.parent / 'fonts'
+            fonts.mkdir(exist_ok=True)
+            for font_file in (pathlib.Path(__file__).resolve().parents[1] / 'public' / 'fonts').glob('*.ttf'):
+                shutil.copy2(font_file, fonts / font_file.name)
+            filters += ',subtitles=captions.ass:fontsdir=fonts'
     args = [os.getenv('FFMPEG', 'ffmpeg'), '-hide_banner', '-loglevel', 'error', '-y', '-protocol_whitelist', 'file,pipe', '-ss', str(clip['start']), '-i', str(source), '-t', str(clip['end']-clip['start']), '-map', '0:v:0', '-map', '0:a:0?', '-vf', filters, '-c:v', 'libx264', '-preset', preset or os.getenv('EXPORT_PRESET','veryfast'), '-crf', '22', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', str(output)]
+    segments = clip_segments(clip)
+    if clip.get('segments'):
+        _, has_audio = probe(source)
+        graph, inputs = [], []
+        for i, segment in enumerate(segments):
+            start, end = segment['start']-clip['start'], segment['end']-clip['start']
+            graph.append(f'[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}]')
+            inputs.append(f'[v{i}]')
+            if has_audio:
+                graph.append(f'[0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS,afade=t=in:d=0.005,afade=t=out:st={max(0,end-start-.005)}:d=0.005[a{i}]')
+                inputs.append(f'[a{i}]')
+        graph.append(''.join(inputs)+f'concat=n={len(segments)}:v=1:a={int(has_audio)}[joined]'+('[audio]' if has_audio else ''))
+        graph.append('[joined]'+filters+'[video]')
+        (output.parent / 'filters.txt').write_text(';'.join(graph), encoding='utf-8')
+        args = args[:args.index('-t')] + ['-filter_complex_script', 'filters.txt', '-map','[video]'] + (['-map','[audio]'] if has_audio else []) + args[args.index('-c:v'):]
     if progress_file:
         args[1:1] = ['-progress', str(progress_file), '-nostats']
     subprocess.run(args, cwd=output.parent, capture_output=True, check=True, timeout=7200)
@@ -128,7 +201,7 @@ class Client:
         self.job = copy.deepcopy(job)
 
     def request(self, path, payload=None, method='POST', binary=None):
-        headers = {'Authorization': f'Bearer {self.token}'}
+        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '2'}
         if self.job:
             headers['X-Job-Token'] = self.job['token']
         if os.getenv('VERCEL_AUTOMATION_BYPASS_SECRET'):
@@ -177,7 +250,7 @@ def process(client, job):
                 if render_progress[0] and render_progress[0].exists():
                     values = re.findall(r'out_time_us=(\d+)', render_progress[0].read_text())
                     if values:
-                        length = job['payload']['clip']['end'] - job['payload']['clip']['start']
+                        length = sum(s['end']-s['start'] for s in clip_segments(job['payload']['clip']))
                         state['progress'] = min(89, 5 + int(int(values[-1]) / 1000000 / length * 84))
                 client.json(f"jobs/{job['id']}/heartbeat", state)
             except Exception:
