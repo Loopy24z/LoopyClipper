@@ -1,6 +1,7 @@
 import {account,chargeStatement,refund} from '@/lib/credits';
 import {billingApi} from '@/lib/billing-api';
 import {templatesApi} from '@/lib/templates-api';
+import {ugcApi} from '@/lib/ugc-api';
 import {youtubeVideo} from '@/lib/credits-domain.mjs';
 import { bindings, db, user, project, event, removeProject, media, HttpError } from '@/lib/server';
 import { PART_SIZE, validateUpload, validateClip, suggestHighlights } from '@/lib/domain.mjs';
@@ -40,11 +41,13 @@ async function handler(r: Request) {
         const u = await user(r);
         const owner = u.userId;
         const wallet = await account(owner,u.email);
+        if(route==='ugc')return json(await ugcApi(method,owner,pid,method==='POST'||method==='PUT'?await body(r):{}));
         if(route==='templates')return json(await templatesApi(method,owner,pid,method==='POST'||method==='PUT'?await body(r):{}));
         if(route === "billing" || route === "admin") return json(await billingApi(route,pid,method,owner,method === "POST" ? await body(r) : {}));
         if (route === 'account') {
             if (method === 'DELETE') {
                 await db().prepare('DELETE FROM clip_templates WHERE owner=?').bind(owner).run();
+                await db().prepare('DELETE FROM ugc_drafts WHERE owner=?').bind(owner).run();
                 const all = await db().prepare('SELECT * FROM projects WHERE owner=?').bind(owner).all();
                 for (const p of all.results)
                     await removeProject(p);

@@ -113,3 +113,9 @@ Update template/editor 2026-10-05:
 - Caption preset menjadi 12: tambahan Neon cyan, Golden hour, Editorial, Rose box, Podcast, Center stage. Menggunakan efek/font renderer yang sudah didukung; renderer tidak berubah.
 - Editor mendapat komponen editor-presets.tsx: kartu preview gaya caption, indikator selected, kategori style, panel saved templates dan konfirmasi hapus inline. Judul video tetap opt-in.
 - Verifikasi 28 tes Node dan production build lulus, termasuk CRUD/isolation/cap template, penyaringan konten/timing dan validasi 12 preset. Tampilan browser interaktif belum diverifikasi pada sesi ini.
+
+## 2026-10-05 - AI UGC Studio draft workspace
+- New private /ugc page and Clipper navigation/discovery card, purple responsive interface.
+- Image reference thumbnails, script, starter outline, product/presenter mode, mood, frame and target duration saved as private drafts (20/account).
+- Applied Supabase migration 0003_ugc_drafts. API owner isolation, draft CRUD/limit tests and build passed. Chrome mocked-API UI save/reopen/delete and mobile overflow passed; additional domain test passed.
+- Generation intentionally disabled. Next: configure Higgsfield server-only credentials, verify model audio/lip-sync capabilities and cost, then implement asynchronous generation and private R2 outputs. No AI video or charge was created.

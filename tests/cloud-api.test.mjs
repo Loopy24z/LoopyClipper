@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import ts from 'typescript';
 import {PGlite} from '@electric-sql/pglite';
 import {createDatabase} from '../lib/database.ts';
+import * as ugcDomain from '../lib/ugc-domain.mjs';
 import * as templateDomain from '../lib/template-settings.mjs';
 import * as domain from '../lib/domain.mjs';
 import * as creditsDomain from '../lib/credits-domain.mjs';
@@ -19,6 +20,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  const pg=new PGlite();t.after(()=>pg.close());
  await pg.exec(await readFile(new URL('../supabase/migrations/0001_loofy.sql',import.meta.url),'utf8'));
  await pg.exec(await readFile(new URL('../supabase/migrations/0002_clip_templates.sql',import.meta.url),'utf8'));
+ await pg.exec(await readFile(new URL('../supabase/migrations/0003_ugc_drafts.sql',import.meta.url),'utf8'));
  const driver=c=>({unsafe:async(sql,values)=>{const r=await c.query(sql,values);return Object.assign(r.rows,{count:r.affectedRows??r.rows.length})},begin:fn=>c.transaction(tx=>fn(driver(tx)))});
  const db=createDatabase(driver(pg));
  const objects=new Map();
@@ -39,11 +41,22 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  const credits=await load('../lib/credits.ts',{'./server':server,'./credits-domain.mjs':creditsDomain});
  const billing=await load('../lib/billing-api.ts',{'./server':server,'./credits':credits});
  const templates=await load('../lib/templates-api.ts',{'./server':server,'./template-settings.mjs':templateDomain});
- const route=await load('../app/api/[...path]/route.ts',{'@/lib/templates-api':templates,'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
+ const ugc=await load('../lib/ugc-api.ts',{'./server':server,'./ugc-domain.mjs':ugcDomain});
+ const route=await load('../app/api/[...path]/route.ts',{'@/lib/ugc-api':ugc,'@/lib/templates-api':templates,'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
  async function call(path,method='GET',body,headers={}){
   const r=await route[method](new Request('https://app.example/api/'+path,{method,headers:{Origin:'https://app.example',...headers},...(body===undefined?{}:{body:JSON.stringify(body)})}));
   return {status:r.status,data:r.status===307?r.headers.get('location'):await r.json()};
  }
+
+ const brief={title:'Product launch',product:'Coffee',script:'Discover the details.',mode:'product',language:'id',style:'natural',ratio:'9:16',duration:10,rights:false,image:''};
+ const draft=await call('ugc','POST',brief);assert.equal(draft.status,200,JSON.stringify(draft));
+ assert.equal((await call('ugc')).data.generationEnabled,false);
+ assert.equal((await call('ugc/'+draft.data.id,'PUT',{...brief,title:'Updated campaign'})).status,200);
+ assert.equal((await call('ugc')).data.drafts[0].data.title,'Updated campaign');
+ assert.equal((await call('ugc','POST',{...brief,duration:999})).status,400);
+ const discard=await call('ugc','POST',brief);assert.equal((await call('ugc/'+discard.data.id,'DELETE')).status,200);
+ for(let n=1;n<20;n++)assert.equal((await call('ugc','POST',brief)).status,200);
+ assert.equal((await call('ugc','POST',brief)).status,409);
  const pid=crypto.randomUUID();
  let r=await call('projects','POST',{name:'test.mp4',size:1000,duration:30,language:'en',youtube:'',rights:true},{'Idempotency-Key':pid});
  assert.equal(r.status,201,JSON.stringify(r));
@@ -108,6 +121,9 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call(`worker/jobs/${yid}/import-complete`,'POST',{parts:[{partNumber:1,etag:'part'}]},yh)).status,200);
  assert.equal((await call('billing','POST',{plan:'creator'})).status,403);
  current='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ assert.equal((await call('ugc')).data.drafts.length,0);
+ assert.equal((await call('ugc/'+draft.data.id,'PUT',brief)).status,404);
+ assert.equal((await call('ugc/'+draft.data.id,'DELETE')).status,404);
  assert.equal((await call('templates')).data.templates.length,0);
  assert.equal((await call('templates/'+saved.data.id,'DELETE')).status,404);
  assert.equal((await call('templates/'+saved.data.id,'PUT',{name:'Stolen',settings})).status,404);
