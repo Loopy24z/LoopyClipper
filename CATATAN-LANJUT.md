@@ -131,3 +131,10 @@ Update template/editor 2026-10-05:
 - Old domain library/login/UGC pages redirect to new domain. Worker/API paths remain reachable on old domain so running processor calls are unaffected.
 - UGC: search by campaign/subject, filter product/presenter drafts, duplicate current brief into an unsaved copy, download plain-text brief, copy script, reading-length guidance.
 - Build and isolated actual React browser interactions passed (mock API). Real Google account completion and paid generation still require user/provider access. No paid generation performed.
+
+## 2026-10-06 - UGC storyboard
+- Added up to 8 editable scenes with name, visual direction, spoken words and 1-15 second durations (60 seconds maximum plan).
+- Four-scene hook/benefit/demo/CTA outline; keyboard-accessible reorder/remove controls; script compilation with replacement confirmation; storyboard included in downloaded brief.
+- Private draft API validates and persists scenes; older drafts remain compatible without migration.
+- 30 tests passed, targeted API persistence test passed, production build passed. Isolated Chrome mock-API test passed scene editing/reorder/save/reopen, draft tools and mobile overflow.
+- Generation is still disabled: no HF_API credentials configured. Storyboard is a planning tool, not synthesized footage. Active domain is https://loofyai.vercel.app.

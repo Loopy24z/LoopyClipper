@@ -7,3 +7,9 @@ test('UGC drafts validate inputs and never retain provider or ownership fields',
  for(const change of [{title:''},{script:'x'.repeat(3001)},{duration:90},{language:'xx'},{rights:'true'},{image:'https://example.com/image.jpg'},{image:'data:image/svg+xml;base64,AAAA'},{image:'data:image/jpeg;base64,AAAA'},{image:'x'.repeat(220001)}])assert.throws(()=>validateUgcDraft({...draft,...change}));
  assert.equal(validateUgcDraft({...draft,mode:'presenter',language:'en',ratio:'16:9',duration:15}).mode,'presenter');
 });
+test('storyboard validates bounded scenes and preserves legacy drafts',()=>{
+ const scene={title:'Hook',visual:'Product close-up',narration:'Meet our product.',seconds:3};
+ assert.deepEqual(validateUgcDraft({...draft,scenes:[{...scene,providerJob:'untrusted'}]}).scenes,[scene]);
+ for(const scenes of [null,{},Array(9).fill(scene),[{...scene,seconds:0}],[{...scene,seconds:1.5}],[{...scene,narration:'x'.repeat(351)}],Array(5).fill({...scene,seconds:15})])assert.throws(()=>validateUgcDraft({...draft,scenes}));
+ assert.equal(validateUgcDraft(draft).scenes,undefined);
+});

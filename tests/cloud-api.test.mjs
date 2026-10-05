@@ -48,11 +48,12 @@ test('cloud API completes upload, transcription, editor and export; enforces own
   return {status:r.status,data:r.status===307?r.headers.get('location'):await r.json()};
  }
 
- const brief={title:'Product launch',product:'Coffee',script:'Discover the details.',mode:'product',language:'id',style:'natural',ratio:'9:16',duration:10,rights:false,image:''};
+ const brief={scenes:[{title:'Hook',visual:'Close-up',narration:'Look at this.',seconds:3}],title:'Product launch',product:'Coffee',script:'Discover the details.',mode:'product',language:'id',style:'natural',ratio:'9:16',duration:10,rights:false,image:''};
  const draft=await call('ugc','POST',brief);assert.equal(draft.status,200,JSON.stringify(draft));
  assert.equal((await call('ugc')).data.generationEnabled,false);
  assert.equal((await call('ugc/'+draft.data.id,'PUT',{...brief,title:'Updated campaign'})).status,200);
  assert.equal((await call('ugc')).data.drafts[0].data.title,'Updated campaign');
+ assert.deepEqual((await call('ugc')).data.drafts[0].data.scenes,brief.scenes);
  assert.equal((await call('ugc','POST',{...brief,duration:999})).status,400);
  const discard=await call('ugc','POST',brief);assert.equal((await call('ugc/'+discard.data.id,'DELETE')).status,200);
  for(let n=1;n<20;n++)assert.equal((await call('ugc','POST',brief)).status,200);

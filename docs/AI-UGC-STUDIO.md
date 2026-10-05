@@ -61,3 +61,6 @@ Validation: production build; API integration tests for draft CRUD, limits and c
 
 ### Draft workflow improvements
 The studio supports campaign/subject search, product/presenter filtering, duplication into an unsaved draft, plain-text brief download and script copying. Reading time is an estimate at 150 words/minute, including stage directions. These tools do not invoke generative models. Production entry point: https://loofyai.vercel.app/ugc.
+
+### Storyboard planning
+Up to eight scenes can hold visual direction, exact spoken words and durations. A four-scene outline provides Hook / Benefit / Product demo / Call to action. Plans are limited to 60 seconds total; the studio warns when planned duration differs from the video target. Compiling spoken words into the main script requires confirmation before replacing existing text. Scene notes are saved privately and included in brief downloads. No storyboard video rendering is enabled.
