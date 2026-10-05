@@ -100,3 +100,9 @@ Update fundamental clip 2026-10-05:
 - Render capability naik ke 3. Worker v1/v2 tidak dapat mengambil job headline. Worker v3 dimulai tersembunyi, PID awal 27300, log work/processor-v3*.log; verifikasi heartbeat sebelum menyatakan online pada sesi berikutnya.
 - Verifikasi: 26 tes Node dan 11 Python lulus, build production lulus. FFmpeg nyata tiga rasio mencakup overlay headline dan cuts. Browser pengguna dan ekspor cloud nyata belum diuji untuk perubahan ini.
 - Pemilihan bagian tidak penting secara semantik belum diterapkan; pemotongan otomatis masih berdasarkan jeda transkrip. Langganan berbayar tetap belum diaktifkan.
+
+Update judul opsional 2026-10-05:
+- Sesuai koreksi pengguna, headlineEnabled default false pada saran dan Apply vertical clip setup. Judul klip untuk library terpisah dari optional video title.
+- UI: Show title in video toggle, Video title text editable, durasi; Fill from transcript tidak otomatis mengaktifkan overlay.
+- Lima headline otomatis milik akun pengguna dimatikan setelah dicocokkan dengan headlineFromWords; empat klip lain dipertahankan. Backup data awal di work/backups/optional-headline-*.json. File ekspor lama tidak diubah: perlu ekspor ulang untuk menghilangkan judul yang sudah dibakar ke video.
+- 26 tes Node dan production build lulus. Renderer tidak berubah.

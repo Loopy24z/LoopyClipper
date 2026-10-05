@@ -57,7 +57,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  const project=(await call(`projects/${pid}`)).data;
  assert.ok(project.clips.length>0);
  assert.ok(project.clips.every(c=>c.data.ratio==='9:16' && c.data.fit==='cover'),'automatic clips fill the vertical frame');
- assert.ok(project.clips.every(c=>c.data.headlineEnabled&&c.data.headline&&c.data.textEffect==='highlight'&&Array.isArray(c.data.segments)),'suggestions include the vertical clip foundations');
+ assert.ok(project.clips.every(c=>c.data.headlineEnabled===false&&c.data.headline&&c.data.textEffect==='highlight'&&Array.isArray(c.data.segments)),'suggestions include the vertical clip foundations');
  const cid=project.clips[0].id;
  assert.equal((await call('projects')).data.projects[0].clipCount,project.clips.length);
  const exp=await call(`clips/${cid}/export`,'POST');assert.equal(exp.status,201,JSON.stringify(exp));

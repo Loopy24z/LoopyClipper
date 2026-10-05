@@ -29,7 +29,7 @@ test('hook scoring looks only at opening 3 seconds and headline quotes source wo
  assert.ok(openingHook(words,4,10).score>openingHook(words,0,10).score);
  assert.equal(headlineFromWords(words,clip),'Halo semuanya.');
  const setup=fundamentalSettings(words,clip);
- assert.equal(setup.ratio,'9:16');assert.equal(setup.textEffect,'highlight');assert.equal(setup.headlineDuration,3);
+ assert.equal(setup.ratio,'9:16');assert.equal(setup.textEffect,'highlight');assert.equal(setup.headlineDuration,3);assert.equal(setup.headlineEnabled,false,'video title is opt-in even when applying fundamentals');
  assert.equal(validateClip({...clip,...setup},10).headline,'Halo semuanya.');
  assert.equal(validateClip(clip,10).headlineEnabled,false,'old clips do not gain an overlay silently');
  for(const change of [{headline:'a'.repeat(81)},{headlineDuration:0},{headlineDuration:NaN},{headlineEnabled:'yes'}])assert.throws(()=>validateClip({...clip,...change},10));
