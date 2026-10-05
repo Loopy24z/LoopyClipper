@@ -124,3 +124,10 @@ Update template/editor 2026-10-05:
 - Renamed visible branding, login copy and browser metadata to LoofyAI.
 - Added vector loop/spark logo and matching favicon; unified midnight navy/violet/cyan theme across library, editor, login and UGC.
 - Production build passed. Isolated Chrome checks of real library/UGC components with mocked APIs passed desktop/mobile overflow, branding and draft interactions.
+
+## 2026-10-05 - LoofyAI domain and UGC workflow
+- Added loofyai.vercel.app as a Vercel project domain; NEXT_PUBLIC_APP_URL production changed to https://loofyai.vercel.app.
+- Supabase site URL updated and new callback allowlist entry added while retaining prior entries. Cloudflare R2 CORS preserves existing origins and includes the new domain.
+- Old domain library/login/UGC pages redirect to new domain. Worker/API paths remain reachable on old domain so running processor calls are unaffected.
+- UGC: search by campaign/subject, filter product/presenter drafts, duplicate current brief into an unsaved copy, download plain-text brief, copy script, reading-length guidance.
+- Build and isolated actual React browser interactions passed (mock API). Real Google account completion and paid generation still require user/provider access. No paid generation performed.

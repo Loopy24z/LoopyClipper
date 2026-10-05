@@ -58,3 +58,6 @@ The authenticated /ugc workspace is implemented with a dedicated responsive purp
 Migration 0003_ugc_drafts enables RLS and restricts database access. Server routes scope every operation to the verified owner; account deletion removes these drafts. Generation is disabled explicitly, with no provider requests or generation credit charges. Model selection, original image storage, cost estimates, generation jobs, generated playback and transfer to Clipper remain pending provider setup.
 
 Validation: production build; API integration tests for draft CRUD, limits and cross-owner isolation; domain input tests; actual React component in isolated Chrome harness with mocked API for save/reopen/delete and responsive layout. This harness is not a live authenticated end-to-end generation test.
+
+### Draft workflow improvements
+The studio supports campaign/subject search, product/presenter filtering, duplication into an unsaved draft, plain-text brief download and script copying. Reading time is an estimate at 150 words/minute, including stage directions. These tools do not invoke generative models. Production entry point: https://loofyai.vercel.app/ugc.
