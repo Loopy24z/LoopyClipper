@@ -172,7 +172,7 @@ async function handler(r: Request) {
             if(action==='suggestions' && method==='POST'){
                 if(p.status!=='ready')throw new HttpError(409,'Wait for the transcript before suggesting clips.');
                 const suggestions=suggestHighlights(JSON.parse(p.transcript),p.duration,p.language);
-                await db().batch([db().prepare('DELETE FROM clips WHERE project=? AND suggested=1 AND id NOT IN (SELECT clip FROM jobs WHERE clip IS NOT NULL)').bind(pid),...suggestions.map((s:any)=>db().prepare('INSERT INTO clips(id,project,data,suggested,created) VALUES(?,?,?,?,?)').bind(id(),pid,JSON.stringify({...s,ratio:'9:16',fit:'cover',position:50,captions:true,fontSize:36,color:'#ffffff',background:'#000000',font:'sans',textEffect:'box',captionText:null}),1,Date.now()))]);return json({count:suggestions.length});
+                await db().batch([db().prepare('DELETE FROM clips WHERE project=? AND suggested=1 AND id NOT IN (SELECT clip FROM jobs WHERE clip IS NOT NULL)').bind(pid),...suggestions.map((s:any)=>db().prepare('INSERT INTO clips(id,project,data,suggested,created) VALUES(?,?,?,?,?)').bind(id(),pid,JSON.stringify({...s,position:50}),1,Date.now()))]);return json({count:suggestions.length});
             }
             if (action === 'clips' && method === 'POST') {
                 if (['uploading', 'deleting'].includes(p.status))
@@ -217,7 +217,7 @@ async function handler(r: Request) {
                 if (active)
                     return json(active);
                 const jid = id();
-                const inserted = await db().prepare(`INSERT INTO jobs(id,project,clip,kind,payload,created,size) SELECT ?,?,?,?,?,?,1073741824 WHERE (${storageSQL})+1073741824<=10737418240 AND NOT EXISTS (SELECT 1 FROM jobs WHERE clip=? AND status IN ('queued','running')) ON CONFLICT DO NOTHING`).bind(jid, c.project, pid, 'export', JSON.stringify({ renderVersion: 2, clip: JSON.parse(c.data), words: JSON.parse(p.transcript) }), Date.now(), owner, owner, pid).run();
+                const inserted = await db().prepare(`INSERT INTO jobs(id,project,clip,kind,payload,created,size) SELECT ?,?,?,?,?,?,1073741824 WHERE (${storageSQL})+1073741824<=10737418240 AND NOT EXISTS (SELECT 1 FROM jobs WHERE clip=? AND status IN ('queued','running')) ON CONFLICT DO NOTHING`).bind(jid, c.project, pid, 'export', JSON.stringify({ renderVersion: 3, clip: JSON.parse(c.data), words: JSON.parse(p.transcript) }), Date.now(), owner, owner, pid).run();
                 if (!inserted.meta.changes) {
                     const duplicate = await db().prepare("SELECT id FROM jobs WHERE clip=? AND status IN ('queued','running')").bind(pid).first();
                     if (duplicate)
@@ -259,7 +259,7 @@ async function worker(r: Request, [action, jid, sub, partNumber]: string[]) {
         await db().prepare("UPDATE jobs SET status='failed',error='Processing was interrupted repeatedly. Please retry.' WHERE status='running' AND lease<? AND attempts>=3").bind(Date.now()).run();
         await db().prepare("UPDATE credit_ledger SET refunded=1 WHERE refunded=0 AND project IN (SELECT project FROM jobs WHERE kind='transcribe' AND status='failed')").run();
         await db().prepare("UPDATE projects SET status='failed',error='Processing was interrupted repeatedly. Please retry.' WHERE id IN (SELECT project FROM jobs WHERE kind='transcribe' AND status='failed') AND status IN ('queued','transcribing','finding highlights','downloading')").run();
-        const job = await db().prepare("UPDATE jobs SET status='running',token=?,lease=?,attempts=attempts+1 WHERE id=(SELECT j.id FROM jobs j JOIN projects p ON p.id=j.project WHERE p.status<>'deleting' AND COALESCE((j.payload::jsonb->>'renderVersion')::int,1)<=? AND (j.status='queued' OR (j.status='running' AND j.lease<? AND j.attempts<3)) ORDER BY j.created LIMIT 1 FOR UPDATE OF j SKIP LOCKED) RETURNING *").bind(id(), Date.now() + 90000, r.headers.get('x-render-version')==='2'?2:1, Date.now()).first<any>();
+        const job = await db().prepare("UPDATE jobs SET status='running',token=?,lease=?,attempts=attempts+1 WHERE id=(SELECT j.id FROM jobs j JOIN projects p ON p.id=j.project WHERE p.status<>'deleting' AND COALESCE((j.payload::jsonb->>'renderVersion')::int,1)<=? AND (j.status='queued' OR (j.status='running' AND j.lease<? AND j.attempts<3)) ORDER BY j.created LIMIT 1 FOR UPDATE OF j SKIP LOCKED) RETURNING *").bind(id(), Date.now() + 90000, r.headers.get('x-render-version')==='3'?3:r.headers.get('x-render-version')==='2'?2:1, Date.now()).first<any>();
         if (!job)
             return json({ job: null });
         const p = await db().prepare('SELECT * FROM projects WHERE id=?').bind(job.project).first<any>();
@@ -360,7 +360,7 @@ async function worker(r: Request, [action, jid, sub, partNumber]: string[]) {
             if (!['en', 'id'].includes(b.language) || !Number.isFinite(b.duration) || b.duration > 3600 || b.duration > p.duration + 1 || !Array.isArray(b.words) || b.words.length > 30000 || b.words.some((w: any) => typeof w.text !== 'string' || w.text.length > 250 || !Number.isFinite(w.start) || !Number.isFinite(w.end) || w.start < 0 || w.end < w.start || w.end > b.duration + 1))
                 throw new HttpError(400, 'Invalid transcription result.');
             const suggestions = suggestHighlights(b.words, b.duration,b.language);
-            const statements = [db().prepare('UPDATE projects SET transcript=?,duration=?,language=?,status=?,error=NULL WHERE id=?').bind(JSON.stringify(b.words), b.duration, b.language, b.words.length ? 'ready' : 'no_speech', p.id), db().prepare('DELETE FROM clips WHERE project=? AND suggested=1').bind(p.id), ...suggestions.map((s: any) => db().prepare('INSERT INTO clips(id,project,data,suggested,created) VALUES(?,?,?,?,?)').bind(id(), p.id, JSON.stringify({ ...s, ratio: '9:16', fit: 'cover', position: 50, captions: true, fontSize: 36, color: '#ffffff', background: '#000000', captionText: null }), 1, Date.now()))];
+            const statements = [db().prepare('UPDATE projects SET transcript=?,duration=?,language=?,status=?,error=NULL WHERE id=?').bind(JSON.stringify(b.words), b.duration, b.language, b.words.length ? 'ready' : 'no_speech', p.id), db().prepare('DELETE FROM clips WHERE project=? AND suggested=1').bind(p.id), ...suggestions.map((s: any) => db().prepare('INSERT INTO clips(id,project,data,suggested,created) VALUES(?,?,?,?,?)').bind(id(), p.id, JSON.stringify({ ...s, position: 50 }), 1, Date.now()))];
             statements.push(db().prepare("UPDATE jobs SET status='complete',progress=100,lease=0 WHERE id=?").bind(jid));
             await db().batch(statements);
             await event(p.owner, 'processing_complete');

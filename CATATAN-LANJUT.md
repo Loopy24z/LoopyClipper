@@ -91,3 +91,12 @@ Update caption/pacing trial 2026-10-04:
 - Worker dinyalakan tersembunyi dengan PID awal 16072; heartbeat produksi kembali aktif. Log work/processor-v2.log dan work/processor-v2-error.log. Bergantung komputer tetap menyala; verifikasi PID saat melanjutkan.
 - Kredit/langganan yang lama tetap berlaku; pembelian masih disabled, belum ada payment gateway. Pertanyaan mode pembayaran belum dijawab. Implementasi ini tidak mengaktifkan tagihan atau paket berbayar.
 - Belum diterapkan dari spec besar: VAD terpersisten, cue editor individual, rendered-preview reuse, semantic model, checkout otomatis. Ini versi uji caption dan pacing yang terbatas, bukan penyelesaian seluruh spec.
+
+Update fundamental clip 2026-10-05:
+- User menetapkan hook 3 detik, pacing, caption dinamis, 9:16 dan headline sebagai komponen dasar.
+- Ranking hook kini melihat sinyal pertanyaan/kontras/manfaat pada tiga detik pembuka saja. Tetap heuristik transkrip, bukan semantic model atau prediksi viral. Tidak menyusun ulang ucapan.
+- Saran baru/refresh memakai Natural pause cuts, 9:16 cover, caption active-word Lato dan headline kutipan pembuka. Reviewed clips tidak diubah otomatis.
+- Clip options memiliki Apply vertical clip setup untuk klip lama, Preview first 3 seconds, serta headline editable maksimal 80 karakter, on/off dan durasi 1-10 detik. Headline dihitung pada output timeline dan ikut burn-in, terpisah dari toggle caption; top captions diberi jarak saat headline aktif.
+- Render capability naik ke 3. Worker v1/v2 tidak dapat mengambil job headline. Worker v3 dimulai tersembunyi, PID awal 27300, log work/processor-v3*.log; verifikasi heartbeat sebelum menyatakan online pada sesi berikutnya.
+- Verifikasi: 26 tes Node dan 11 Python lulus, build production lulus. FFmpeg nyata tiga rasio mencakup overlay headline dan cuts. Browser pengguna dan ekspor cloud nyata belum diuji untuk perubahan ini.
+- Pemilihan bagian tidak penting secara semantik belum diterapkan; pemotongan otomatis masih berdasarkan jeda transkrip. Langganan berbayar tetap belum diaktifkan.

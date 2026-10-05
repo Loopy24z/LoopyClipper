@@ -115,12 +115,13 @@ PlayResY: {height}
 WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font},{size},{color(clip['color'])},{color(clip.get('highlightColor','#e5ff00'))},{color(clip['background'])},{color(clip['background'])},{-1 if effect in ('bold','outline','highlight') else 0},0,0,0,100,100,0,0,{3 if effect=='box' else 1},{size*.035 if effect in ('outline','highlight') else 4 if effect=='box' else 0},{size*.035 if effect=='shadow' else 0},{alignment},{round(width*.065)},{round(width*.065)},{round(height*.08)},1
+Style: Default,{font},{size},{color(clip['color'])},{color(clip.get('highlightColor','#e5ff00'))},{color(clip['background'])},{color(clip['background'])},{-1 if effect in ('bold','outline','highlight') else 0},0,0,0,100,100,0,0,{3 if effect=='box' else 1},{size*.035 if effect in ('outline','highlight') else 4 if effect=='box' else 0},{size*.035 if effect=='shadow' else 0},{alignment},{round(width*.065)},{round(width*.065)},{round(height*(.32 if alignment==8 and clip.get('headlineEnabled') and clip.get('headline') else .08))},1
+Style: Headline,Lato,56,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,3,4,0,8,{round(width*.065)},{round(width*.065)},{round(height*.08)},1
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 '''
     events = []
-    for group in caption_groups(words,clip):
+    for group in (caption_groups(words,clip) if clip.get('captions',True) else []):
         boundaries = sorted(set([group[0]['start'],group[-1]['end']] + ([v for w in group for v in (w['start'],w['end'])] if effect=='highlight' and not clip.get('captionText') else [])))
         for start,end in zip(boundaries,boundaries[1:]):
             if end <= start: continue
@@ -132,6 +133,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     value = '{\\c'+color(clip.get('highlightColor','#e5ff00') if selected else clip['color'])+'}'+value
                 text.append(value)
             events.append(f"Dialogue: 0,{clock(start)},{clock(end)},Default,,0,0,0,,{' '.join(text)}")
+    if clip.get('headlineEnabled') and clip.get('headline'):
+        headline = clean_text(clip['headline']).replace('\n',' ').replace('\r',' ')
+        duration = min(float(clip.get('headlineDuration',3)), sum(s['end']-s['start'] for s in clip_segments(clip)))
+        headline_style = ''
+        events.append(f"Dialogue: 1,0:00:00.00,{clock(duration)},Headline,,{round(width*.065)},{round(width*.065)},{round(height*.08)},,{headline_style}{headline}")
     return header+'\n'.join(events)+'\n'
 
 def probe(source):
@@ -150,7 +156,7 @@ def render(source, output, clip, words, preset=None, progress_file=None):
     else:
         framing = f'scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black'
     filters = framing + ',setsar=1'
-    if clip['captions']:
+    if clip['captions'] or (clip.get('headlineEnabled') and clip.get('headline')):
         subtitles = ass_subtitles(words, clip)
         if subtitles:
             (output.parent / 'captions.ass').write_text(subtitles, encoding='utf-8')
@@ -201,7 +207,7 @@ class Client:
         self.job = copy.deepcopy(job)
 
     def request(self, path, payload=None, method='POST', binary=None):
-        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '2'}
+        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '3'}
         if self.job:
             headers['X-Job-Token'] = self.job['token']
         if os.getenv('VERCEL_AUTOMATION_BYPASS_SECRET'):

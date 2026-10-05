@@ -9,8 +9,15 @@ processor=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(processor)
 
 class ProcessorTests(unittest.TestCase):
+ def test_headline_independent_of_captions_and_clamped_to_output(self):
+  clip={'start':0,'end':2,'ratio':'9:16','captions':False,'fontSize':40,'color':'#ffffff','background':'#000000','headlineEnabled':True,'headline':'Why {bad} \\test?','headlineDuration':3}
+  result=processor.ass_subtitles([{'start':0,'end':1,'text':'HIDDEN'}],clip)
+  self.assertNotIn('HIDDEN',result)
+  self.assertIn('Dialogue: 1,0:00:00.00,0:00:02.00,Headline',result)
+  self.assertNotIn('{bad}',result)
+  self.assertIn('Why bad test?',result)
  def test_jump_cut_render_and_caption_timing(self):
-  clip={'start':0,'end':3,'segments':[{'start':0,'end':1},{'start':2,'end':3}],'ratio':'9:16','fit':'cover','position':50,'captions':True,'fontSize':52,'color':'#ffffff','background':'#000000','textEffect':'highlight','font':'lato','wordsPerCaption':3}
+  clip={'start':0,'end':3,'segments':[{'start':0,'end':1},{'start':2,'end':3}],'ratio':'9:16','fit':'cover','position':50,'captions':True,'fontSize':52,'color':'#ffffff','background':'#000000','textEffect':'highlight','font':'lato','wordsPerCaption':3,'headlineEnabled':True,'headline':'Opening headline','headlineDuration':1}
   words=[{'start':0,'end':.8,'text':'hello'},{'start':1.2,'end':1.8,'text':'REMOVED'},{'start':2,'end':2.9,'text':'next'}]
   captions=processor.subtitle_text(words,clip)
   self.assertNotIn('REMOVED',captions)

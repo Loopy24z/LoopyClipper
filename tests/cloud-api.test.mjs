@@ -47,7 +47,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call('projects','POST',{name:'test.mp4',size:1000,duration:30,language:'en',rights:true},{'Idempotency-Key':pid})).data.id,pid);
  assert.equal((await call(`projects/${pid}/part/1`,'POST',{size:1000})).status,200);
  assert.equal((await call(`projects/${pid}/complete`,'POST',{parts:[{partNumber:1,etag:'part'}]})).status,200);
- const auth={Authorization:'Bearer test-secret','X-Render-Version':'2'};
+ const auth={Authorization:'Bearer test-secret','X-Render-Version':'3'};
  const job=(await call('worker/claim','POST',undefined,auth)).data.job;
  assert.equal(job.project,pid);
  const jobHeaders={...auth,'X-Job-Token':job.token};
@@ -57,11 +57,13 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  const project=(await call(`projects/${pid}`)).data;
  assert.ok(project.clips.length>0);
  assert.ok(project.clips.every(c=>c.data.ratio==='9:16' && c.data.fit==='cover'),'automatic clips fill the vertical frame');
+ assert.ok(project.clips.every(c=>c.data.headlineEnabled&&c.data.headline&&c.data.textEffect==='highlight'&&Array.isArray(c.data.segments)),'suggestions include the vertical clip foundations');
  const cid=project.clips[0].id;
  assert.equal((await call('projects')).data.projects[0].clipCount,project.clips.length);
  const exp=await call(`clips/${cid}/export`,'POST');assert.equal(exp.status,201,JSON.stringify(exp));
  assert.equal((await call(`clips/${cid}/export`,'POST')).data.id,exp.data.id);
  assert.equal((await call('worker/claim','POST',undefined,{Authorization:'Bearer test-secret'})).data.job,null,'legacy worker cannot consume a new render');
+ assert.equal((await call('worker/claim','POST',undefined,{Authorization:'Bearer test-secret','X-Render-Version':'2'})).data.job,null,'v2 cannot render headline jobs');
  const exportJob=(await call('worker/claim','POST',undefined,auth)).data.job;
  const exportAuth={...auth,'X-Job-Token':exportJob.token};
  for(const [action,body] of [['output-start',undefined],['output-part/1',{size:1000}],['output-complete',{parts:[{partNumber:1,etag:'part'}]}],['finish',{}]]){

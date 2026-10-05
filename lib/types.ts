@@ -23,6 +23,9 @@ export type ClipData = {
     background: string;
     captionText?: string | null;
     reason?: string;
+    headline?: string;
+    headlineEnabled?: boolean;
+    headlineDuration?: number;
 };
 export type Clip = {
     id: string;
