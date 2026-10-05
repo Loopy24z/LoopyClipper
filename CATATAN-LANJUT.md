@@ -106,3 +106,10 @@ Update judul opsional 2026-10-05:
 - UI: Show title in video toggle, Video title text editable, durasi; Fill from transcript tidak otomatis mengaktifkan overlay.
 - Lima headline otomatis milik akun pengguna dimatikan setelah dicocokkan dengan headlineFromWords; empat klip lain dipertahankan. Backup data awal di work/backups/optional-headline-*.json. File ekspor lama tidak diubah: perlu ekspor ulang untuk menghilangkan judul yang sudah dibakar ke video.
 - 26 tes Node dan production build lulus. Renderer tidak berubah.
+
+Update template/editor 2026-10-05:
+- My templates menyimpan maksimal 20 template per akun di Supabase, dengan create/apply/replace-rename/delete dan undo apply. Template menyimpan style caption, rasio/fit/crop dan visibility/durasi judul; tidak menyalin transcript, headline text, nama klip, caption override, atau segments/timing.
+- Migration 0002_clip_templates.sql sudah diterapkan. RLS aktif, akses browser direct dicabut; API membatasi setiap operasi ke owner. Batas jumlah diserialisasi dengan lock akun; nama unik case-insensitive per owner. Workspace deletion juga menghapus template.
+- Caption preset menjadi 12: tambahan Neon cyan, Golden hour, Editorial, Rose box, Podcast, Center stage. Menggunakan efek/font renderer yang sudah didukung; renderer tidak berubah.
+- Editor mendapat komponen editor-presets.tsx: kartu preview gaya caption, indikator selected, kategori style, panel saved templates dan konfirmasi hapus inline. Judul video tetap opt-in.
+- Verifikasi 28 tes Node dan production build lulus, termasuk CRUD/isolation/cap template, penyaringan konten/timing dan validasi 12 preset. Tampilan browser interaktif belum diverifikasi pada sesi ini.

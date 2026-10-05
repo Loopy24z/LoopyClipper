@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import ts from 'typescript';
 import {PGlite} from '@electric-sql/pglite';
 import {createDatabase} from '../lib/database.ts';
+import * as templateDomain from '../lib/template-settings.mjs';
 import * as domain from '../lib/domain.mjs';
 import * as creditsDomain from '../lib/credits-domain.mjs';
 const require = createRequire(import.meta.url);
@@ -17,6 +18,7 @@ async function load(path, modules) {
 test('cloud API completes upload, transcription, editor and export; enforces ownership and job leases', async t=>{
  const pg=new PGlite();t.after(()=>pg.close());
  await pg.exec(await readFile(new URL('../supabase/migrations/0001_loofy.sql',import.meta.url),'utf8'));
+ await pg.exec(await readFile(new URL('../supabase/migrations/0002_clip_templates.sql',import.meta.url),'utf8'));
  const driver=c=>({unsafe:async(sql,values)=>{const r=await c.query(sql,values);return Object.assign(r.rows,{count:r.affectedRows??r.rows.length})},begin:fn=>c.transaction(tx=>fn(driver(tx)))});
  const db=createDatabase(driver(pg));
  const objects=new Map();
@@ -36,7 +38,8 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  media:async(r,key)=>new Response(null,{status:307,headers:{Location:await bucket.signedGet(key)}}),removeProject:async()=>{}};
  const credits=await load('../lib/credits.ts',{'./server':server,'./credits-domain.mjs':creditsDomain});
  const billing=await load('../lib/billing-api.ts',{'./server':server,'./credits':credits});
- const route=await load('../app/api/[...path]/route.ts',{'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
+ const templates=await load('../lib/templates-api.ts',{'./server':server,'./template-settings.mjs':templateDomain});
+ const route=await load('../app/api/[...path]/route.ts',{'@/lib/templates-api':templates,'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
  async function call(path,method='GET',body,headers={}){
   const r=await route[method](new Request('https://app.example/api/'+path,{method,headers:{Origin:'https://app.example',...headers},...(body===undefined?{}:{body:JSON.stringify(body)})}));
   return {status:r.status,data:r.status===307?r.headers.get('location'):await r.json()};
@@ -59,6 +62,21 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.ok(project.clips.every(c=>c.data.ratio==='9:16' && c.data.fit==='cover'),'automatic clips fill the vertical frame');
  assert.ok(project.clips.every(c=>c.data.headlineEnabled===false&&c.data.headline&&c.data.textEffect==='highlight'&&Array.isArray(c.data.segments)),'suggestions include the vertical clip foundations');
  const cid=project.clips[0].id;
+ const settings=project.clips[0].data;
+ const saved=await call('templates','POST',{name:'Podcast',settings});assert.equal(saved.status,200,JSON.stringify(saved));
+ assert.equal(saved.data.settings.title,undefined);
+ assert.equal((await call('templates')).data.templates.length,1);
+ assert.equal((await call('templates','POST',{name:'podcast',settings})).status,409);
+ assert.equal((await call('templates','POST',{name:'Broken',settings:{fontSize:1000}})).status,400);
+ assert.equal((await call('templates/'+saved.data.id,'PUT',{name:'Podcast updated',settings:{...settings,fontSize:60}})).status,200);
+ assert.equal((await call('templates')).data.templates[0].settings.fontSize,60);
+ const extraTemplate=await call('templates','POST',{name:'Delete me',settings});
+ assert.equal((await call('templates/'+extraTemplate.data.id,'DELETE')).status,200);
+ assert.equal((await call('templates/'+extraTemplate.data.id,'DELETE')).status,404);
+ for(let n=1;n<20;n++)assert.equal((await call('templates','POST',{name:'Look '+n,settings})).status,200);
+ assert.equal((await call('templates','POST',{name:'Too many',settings})).status,409);
+ assert.equal((await pg.query("select relrowsecurity from pg_class where relname='clip_templates'")).rows[0].relrowsecurity,true);
+
  assert.equal((await call('projects')).data.projects[0].clipCount,project.clips.length);
  const exp=await call(`clips/${cid}/export`,'POST');assert.equal(exp.status,201,JSON.stringify(exp));
  assert.equal((await call(`clips/${cid}/export`,'POST')).data.id,exp.data.id);
@@ -90,6 +108,10 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call(`worker/jobs/${yid}/import-complete`,'POST',{parts:[{partNumber:1,etag:'part'}]},yh)).status,200);
  assert.equal((await call('billing','POST',{plan:'creator'})).status,403);
  current='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ assert.equal((await call('templates')).data.templates.length,0);
+ assert.equal((await call('templates/'+saved.data.id,'DELETE')).status,404);
+ assert.equal((await call('templates/'+saved.data.id,'PUT',{name:'Stolen',settings})).status,404);
+
  assert.equal((await call(`projects/${pid}`)).status,404);
  assert.equal((await call(`exports/${exportJob.id}`)).status,404);
  assert.equal((await call('admin')).status,403);
