@@ -119,3 +119,8 @@ Update template/editor 2026-10-05:
 - Image reference thumbnails, script, starter outline, product/presenter mode, mood, frame and target duration saved as private drafts (20/account).
 - Applied Supabase migration 0003_ugc_drafts. API owner isolation, draft CRUD/limit tests and build passed. Chrome mocked-API UI save/reopen/delete and mobile overflow passed; additional domain test passed.
 - Generation intentionally disabled. Next: configure Higgsfield server-only credentials, verify model audio/lip-sync capabilities and cost, then implement asynchronous generation and private R2 outputs. No AI video or charge was created.
+
+## 2026-10-05 - LoofyAI identity
+- Renamed visible branding, login copy and browser metadata to LoofyAI.
+- Added vector loop/spark logo and matching favicon; unified midnight navy/violet/cyan theme across library, editor, login and UGC.
+- Production build passed. Isolated Chrome checks of real library/UGC components with mocked APIs passed desktop/mobile overflow, branding and draft interactions.

@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./editor.css";
 import "./studio-theme.css";
+import "./loofyai-theme.css";
 
 export const metadata: Metadata = {
-  title: "Loofy Clip — Your creative workspace",
-  description: "Turn long videos into your next great clips.",
+  title: "LoofyAI — Your creative workspace",
+  description: "Your AI creative workspace for clips, captions, and new video ideas.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
