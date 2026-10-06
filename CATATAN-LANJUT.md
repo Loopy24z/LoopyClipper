@@ -138,3 +138,10 @@ Update template/editor 2026-10-05:
 - Private draft API validates and persists scenes; older drafts remain compatible without migration.
 - 30 tests passed, targeted API persistence test passed, production build passed. Isolated Chrome mock-API test passed scene editing/reorder/save/reopen, draft tools and mobile overflow.
 - Generation is still disabled: no HF_API credentials configured. Storyboard is a planning tool, not synthesized footage. Active domain is https://loofyai.vercel.app.
+
+## 2026-10-06 - Product renderer live verification
+- Deployed commit 62ae1c3 to loofyai.vercel.app (deployment dpl_91HR9XWcGy4BHoWptubag3fePbJF).
+- 30 Node tests and build passed; Windows FFmpeg fixtures passed 1080p H264/AAC checks in 9:16, 1:1 and 16:9. Browser mock-API draft/storyboard and responsive checks passed.
+- Live synthetic 2-second job passed actual Supabase queue -> Windows worker v4 -> R2 upload -> finish -> private signed download. ffprobe confirmed 1080x1920 H264/AAC, exactly 2s. Synthetic database project/draft/media removed afterwards; local verification output remains under work/ugc-render-smoke.
+- Background hidden-process launch was rejected by automatic policy; foreground worker --once ran successfully. Use scripts/start-processor.ps1 in a VSCode terminal for personal use. Keep terminal/laptop running; this is not a Windows service.
+- Use Product story, reference image and image permission, save draft, optional MP3 audio (1 MB combined), then Render product video. Presenter generation remains disabled.
