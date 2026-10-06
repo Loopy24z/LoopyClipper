@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict';
+import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
@@ -32,8 +32,8 @@ test('cloud API completes upload, transcription, editor and export; enforces own
   list:async()=>({objects:[],truncated:false}),delete:async()=>{}
  };
  class HttpError extends Error {constructor(status,message){super(message);this.status=status}}
- let current=owner;
- const server={db:()=>db,bindings:()=>({DB:db,BUCKET:bucket,PROCESSOR_TOKEN:'test-secret',ADMIN_USER_IDS:''}),HttpError,
+ let current=owner,adminIds='';
+ const server={db:()=>db,bindings:()=>({DB:db,BUCKET:bucket,PROCESSOR_TOKEN:'test-secret',ADMIN_USER_IDS:adminIds}),HttpError,
  user:async()=>({userId:current,email:'test@example.test',fullName:null}),
  project:async(id,o)=>{const p=await db.prepare("SELECT * FROM projects WHERE id=? AND owner=? AND status<>'deleting'").bind(id,o).first();if(!p)throw new HttpError(404,'Not found');return p},
  event:async(o,name,value=null)=>db.prepare('INSERT INTO events(owner,name,value,created) VALUES(?,?,?,?)').bind(o,name,value,Date.now()).run(),
@@ -41,8 +41,9 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  const credits=await load('../lib/credits.ts',{'./server':server,'./credits-domain.mjs':creditsDomain});
  const billing=await load('../lib/billing-api.ts',{'./server':server,'./credits':credits});
  const templates=await load('../lib/templates-api.ts',{'./server':server,'./template-settings.mjs':templateDomain});
- const ugc=await load('../lib/ugc-api.ts',{'./server':server,'./ugc-domain.mjs':ugcDomain});
- const route=await load('../app/api/[...path]/route.ts',{'@/lib/ugc-api':ugc,'@/lib/templates-api':templates,'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
+ const ugcRender=await load('../lib/ugc-render.ts',{'./server':server,'./credits':credits,'./ugc-domain.mjs':ugcDomain});
+ const ugc=await load('../lib/ugc-api.ts',{'./server':server,'./credits':credits,'./ugc-render':ugcRender,'./ugc-domain.mjs':ugcDomain});
+ const route=await load('../app/api/[...path]/route.ts',{'@/lib/ugc-render':ugcRender,'@/lib/ugc-api':ugc,'@/lib/templates-api':templates,'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
  async function call(path,method='GET',body,headers={}){
   const r=await route[method](new Request('https://app.example/api/'+path,{method,headers:{Origin:'https://app.example',...headers},...(body===undefined?{}:{body:JSON.stringify(body)})}));
   return {status:r.status,data:r.status===307?r.headers.get('location'):await r.json()};
@@ -121,7 +122,27 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call(`worker/jobs/${yid}/import-part/1`,'POST',{size:1000},yh)).status,200);
  assert.equal((await call(`worker/jobs/${yid}/import-complete`,'POST',{parts:[{partNumber:1,etag:'part'}]},yh)).status,200);
  assert.equal((await call('billing','POST',{plan:'creator'})).status,403);
+ // Personal UGC: real route validation, idempotency, capability, storage upload, finish and ownership.
+ assert.equal((await call('ugc/'+draft.data.id+'/render','POST',{})).status,403);
+ adminIds=owner;
+ const product={...brief,rights:true,image:'data:image/jpeg;base64,/9j/AA=='};
+ assert.equal((await call('ugc/'+draft.data.id,'PUT',product)).status,200);
+ const productJob=await call('ugc/'+draft.data.id+'/render','POST',{});assert.equal(productJob.status,200,JSON.stringify(productJob));
+ assert.equal((await call('ugc/'+draft.data.id+'/render','POST',{})).data.projectId,productJob.data.projectId);
+ assert.equal((await call('ugc/'+draft.data.id+'/render','POST',{voice:'https://bad.test/a.mp3'})).status,400);
+ const oldWorker=await call('worker/claim','POST',undefined,{...auth,'X-Render-Version':'3'});assert.equal(oldWorker.data.job,null);
+ const productClaim=(await call('worker/claim','POST',undefined,{...auth,'X-Render-Version':'4'})).data.job;assert.equal(productClaim.id,productJob.data.projectId);
+ const ph={...auth,'X-Job-Token':productClaim.token};
+ assert.equal((await call('worker/jobs/'+productClaim.id+'/finish','POST',{},ph)).status,409);
+ assert.equal((await call('worker/jobs/'+productClaim.id+'/import-prepare','POST',{duration:3,name:'Product fixture'},ph)).status,200);
+ assert.equal((await call('worker/jobs/'+productClaim.id+'/import-complete','POST',{parts:[{partNumber:1,etag:'part'}]},ph)).status,200);
+ assert.equal((await call('worker/jobs/'+productClaim.id+'/finish','POST',{},ph)).status,200);
+ assert.equal((await call('ugc/renders')).data.renders[0].status,'complete');
+ assert.equal((await call('projects/'+productClaim.id)).data.status,'ready');
+ assert.equal((await call('ugc/'+draft.data.id+'/render','POST',{})).data.status,'complete');
+ adminIds='';
  current='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ assert.equal((await call('ugc/renders')).data.renders.length,0);
  assert.equal((await call('ugc')).data.drafts.length,0);
  assert.equal((await call('ugc/'+draft.data.id,'PUT',brief)).status,404);
  assert.equal((await call('ugc/'+draft.data.id,'DELETE')).status,404);

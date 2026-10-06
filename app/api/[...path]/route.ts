@@ -1,6 +1,7 @@
 import {account,chargeStatement,refund} from '@/lib/credits';
 import {billingApi} from '@/lib/billing-api';
 import {templatesApi} from '@/lib/templates-api';
+import {ugcRender,ugcRenders} from '@/lib/ugc-render';
 import {ugcApi} from '@/lib/ugc-api';
 import {youtubeVideo} from '@/lib/credits-domain.mjs';
 import { bindings, db, user, project, event, removeProject, media, HttpError } from '@/lib/server';
@@ -41,6 +42,8 @@ async function handler(r: Request) {
         const u = await user(r);
         const owner = u.userId;
         const wallet = await account(owner,u.email);
+        if(route==='ugc'&&pid==='renders'&&method==='GET')return json({renderEnabled:wallet.admin,renders:await ugcRenders(owner)});
+        if(route==='ugc'&&pid&&action==='render'&&method==='POST')return json(await ugcRender(owner,pid,await body(r)));
         if(route==='ugc')return json(await ugcApi(method,owner,pid,method==='POST'||method==='PUT'?await body(r):{}));
         if(route==='templates')return json(await templatesApi(method,owner,pid,method==='POST'||method==='PUT'?await body(r):{}));
         if(route === "billing" || route === "admin") return json(await billingApi(route,pid,method,owner,method === "POST" ? await body(r) : {}));
@@ -153,11 +156,20 @@ async function handler(r: Request) {
                 return json({ ok: true });
             }
             if (action === 'source' && method === 'GET')
-                return media(r, `${pid}/source`);
+                return media(r, `${pid}/source`,new URL(r.url).searchParams.get('download')==='1'?'loofyai-product.mp4':undefined);
             if (action === 'retry' && method === 'POST') {
                 if (p.status !== 'failed')
                     throw new HttpError(409, 'Only failed processing can be retried.');
                 const retryJob=await db().prepare('SELECT payload FROM jobs WHERE id=?').bind(pid).first<any>();
+                if(retryJob&&JSON.parse(retryJob.payload).ugc){
+                    if(!wallet.admin)throw new HttpError(403,'Administrator access required.');
+                    return db().transaction(async()=>{
+                    await db().prepare('SELECT id FROM accounts WHERE id=? FOR UPDATE').bind(owner).first();
+                    const active=await db().prepare("SELECT j.id FROM jobs j JOIN projects p ON p.id=j.project WHERE p.owner=? AND j.payload::jsonb->'ugc' IS NOT NULL AND j.status IN ('queued','running')").bind(owner).first();
+                    if(active)throw new HttpError(409,'Wait for the active UGC render to finish.');
+                    await db().prepare("UPDATE projects SET size=134217728,status='queued',error=NULL WHERE id=?").bind(pid).run();
+                    await db().prepare("UPDATE jobs SET status='queued',attempts=0,lease=0,error=NULL,progress=0,token=NULL WHERE id=?").bind(pid).run();return json({ok:true});});
+                }
                 if(retryJob&&JSON.parse(retryJob.payload).youtube){
                     const reserved=await db().prepare(`UPDATE projects SET size=2147483648 WHERE id=? AND (${storageSQL})-?+2147483648<=10737418240`).bind(pid,owner,owner,p.size).run();
                     if(!reserved.meta.changes)throw new HttpError(409,'YouTube retry needs 2 GB of available storage.');
@@ -265,7 +277,7 @@ async function worker(r: Request, [action, jid, sub, partNumber]: string[]) {
         await db().prepare("UPDATE jobs SET status='failed',error='Processing was interrupted repeatedly. Please retry.' WHERE status='running' AND lease<? AND attempts>=3").bind(Date.now()).run();
         await db().prepare("UPDATE credit_ledger SET refunded=1 WHERE refunded=0 AND project IN (SELECT project FROM jobs WHERE kind='transcribe' AND status='failed')").run();
         await db().prepare("UPDATE projects SET status='failed',error='Processing was interrupted repeatedly. Please retry.' WHERE id IN (SELECT project FROM jobs WHERE kind='transcribe' AND status='failed') AND status IN ('queued','transcribing','finding highlights','downloading')").run();
-        const job = await db().prepare("UPDATE jobs SET status='running',token=?,lease=?,attempts=attempts+1 WHERE id=(SELECT j.id FROM jobs j JOIN projects p ON p.id=j.project WHERE p.status<>'deleting' AND COALESCE((j.payload::jsonb->>'renderVersion')::int,1)<=? AND (j.status='queued' OR (j.status='running' AND j.lease<? AND j.attempts<3)) ORDER BY j.created LIMIT 1 FOR UPDATE OF j SKIP LOCKED) RETURNING *").bind(id(), Date.now() + 90000, r.headers.get('x-render-version')==='3'?3:r.headers.get('x-render-version')==='2'?2:1, Date.now()).first<any>();
+        const job = await db().prepare("UPDATE jobs SET status='running',token=?,lease=?,attempts=attempts+1 WHERE id=(SELECT j.id FROM jobs j JOIN projects p ON p.id=j.project WHERE p.status<>'deleting' AND COALESCE((j.payload::jsonb->>'renderVersion')::int,1)<=? AND (j.status='queued' OR (j.status='running' AND j.lease<? AND j.attempts<3)) ORDER BY j.created LIMIT 1 FOR UPDATE OF j SKIP LOCKED) RETURNING *").bind(id(), Date.now() + 90000, r.headers.get('x-render-version')==='4'?4:r.headers.get('x-render-version')==='3'?3:r.headers.get('x-render-version')==='2'?2:1, Date.now()).first<any>();
         if (!job)
             return json({ job: null });
         const p = await db().prepare('SELECT * FROM projects WHERE id=?').bind(job.project).first<any>();
@@ -282,10 +294,11 @@ async function worker(r: Request, [action, jid, sub, partNumber]: string[]) {
         throw new HttpError(409, 'Job lease is no longer active.');
     if(sub==='import-prepare' && r.method==='POST'){
         const b=await body(r),p=await db().prepare('SELECT * FROM projects WHERE id=?').bind(job.project).first<any>();
-        if(!JSON.parse(job.payload).youtube)throw new HttpError(400,'Not a YouTube import.');
+        const ugc=JSON.parse(job.payload).ugc;
+        if(!ugc&&!JSON.parse(job.payload).youtube)throw new HttpError(400,'Not a YouTube import.');
         if(!Number.isFinite(b.duration)||b.duration<=0||b.duration>3600)throw new HttpError(400,'YouTube videos must be at most 60 minutes.');
         const prior=await db().prepare('SELECT * FROM credit_ledger WHERE project=?').bind(p.id).first<any>();
-        if(!prior||prior.refunded){const charge=await chargeStatement(p.owner,p.id,b.duration);await db().batch([db().prepare('DELETE FROM credit_ledger WHERE project=? AND refunded=1').bind(p.id),charge]);}
+        if(!ugc&&(!prior||prior.refunded)){const charge=await chargeStatement(p.owner,p.id,b.duration);await db().batch([db().prepare('DELETE FROM credit_ledger WHERE project=? AND refunded=1').bind(p.id),charge]);}
         if(p.upload_id)try{await bindings().BUCKET.resumeMultipartUpload(`${p.id}/source`,p.upload_id).abort()}catch{}
         const upload=await bindings().BUCKET.createMultipartUpload(`${p.id}/source`,{httpMetadata:{contentType:'video/mp4'}});
         await db().prepare('UPDATE projects SET duration=?,name=?,upload_id=? WHERE id=?').bind(b.duration,String(b.name||'YouTube video').slice(0,190),upload.uploadId,p.id).run();return json({ok:true});
@@ -299,7 +312,7 @@ async function worker(r: Request, [action, jid, sub, partNumber]: string[]) {
         const b=await body(r),p=await db().prepare('SELECT * FROM projects WHERE id=?').bind(job.project).first<any>();
         if(!Array.isArray(b.parts)||!b.parts.length||b.parts.length>256||b.parts.some((v:any,i:number)=>v.partNumber!==i+1||typeof v.etag!=='string'))throw new HttpError(400,'Invalid source parts.');
         if(p.upload_id)await bindings().BUCKET.resumeMultipartUpload(`${p.id}/source`,p.upload_id).complete(b.parts);
-        const object=await bindings().BUCKET.head(`${p.id}/source`);if(!object||object.size>2147483648)throw new HttpError(400,'Source exceeds 2 GB.');
+        const object=await bindings().BUCKET.head(`${p.id}/source`);if(!object||object.size>(JSON.parse(job.payload).ugc?134217728:2147483648))throw new HttpError(400,'Source exceeds 2 GB.');
         await db().prepare('UPDATE projects SET size=?,upload_id=NULL WHERE id=?').bind(object.size,p.id).run();return json({ok:true});
     }
     if (sub === 'source' && r.method === 'GET')
@@ -348,7 +361,7 @@ async function worker(r: Request, [action, jid, sub, partNumber]: string[]) {
         const p = await db().prepare('SELECT * FROM projects WHERE id=?').bind(job.project).first<any>();
         if (b.error) {
             const payload = JSON.parse(job.payload);
-            if(payload.youtube){
+            if(payload.youtube||payload.ugc){
                 if(p.upload_id)try{await bindings().BUCKET.resumeMultipartUpload(`${p.id}/source`,p.upload_id).abort()}catch{}
                 const source=await bindings().BUCKET.head(`${p.id}/source`);
                 await db().prepare('UPDATE projects SET size=?,upload_id=NULL WHERE id=?').bind(source?.size||0,p.id).run();
@@ -362,7 +375,14 @@ async function worker(r: Request, [action, jid, sub, partNumber]: string[]) {
             await event(p.owner, job.kind === 'export' ? 'export_failed' : 'processing_failed');
             return json({ ok: true });
         }
-        if (job.kind === 'transcribe') {
+        if (job.kind === 'transcribe' && JSON.parse(job.payload).ugc) {
+            const data=JSON.parse(job.payload).ugc,object=await bindings().BUCKET.head(job.project+'/source');
+            if(!object||object.size>134217728)throw new HttpError(409,'Upload the rendered source before finishing.');
+            const clip={title:data.title,description:data.script,start:0,end:p.duration,ratio:data.ratio,fit:'contain',position:50,captions:false,fontSize:36,color:'#ffffff',background:'#000000',captionText:null};
+            await db().prepare("UPDATE projects SET status='ready',error=NULL WHERE id=?").bind(p.id).run();
+            await db().prepare('INSERT INTO clips(id,project,data,suggested,created) VALUES(?,?,?,0,?) ON CONFLICT DO NOTHING').bind(p.id+'-clip',p.id,JSON.stringify(clip),Date.now()).run();
+        }
+        else if (job.kind === 'transcribe') {
             if (!['en', 'id'].includes(b.language) || !Number.isFinite(b.duration) || b.duration > 3600 || b.duration > p.duration + 1 || !Array.isArray(b.words) || b.words.length > 30000 || b.words.some((w: any) => typeof w.text !== 'string' || w.text.length > 250 || !Number.isFinite(w.start) || !Number.isFinite(w.end) || w.start < 0 || w.end < w.start || w.end > b.duration + 1))
                 throw new HttpError(400, 'Invalid transcription result.');
             const suggestions = suggestHighlights(b.words, b.duration,b.language);

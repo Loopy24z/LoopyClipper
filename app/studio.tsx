@@ -38,7 +38,7 @@ export default function Studio() {
     finally {
         setLoading(false);
     } }
-    useEffect(() => { refresh(); api('account').then(setAccount).catch(() => { }); api('events', { method: 'POST', body: JSON.stringify({ name: 'visit' }) }).catch(() => { }); const saved = localStorage.getItem('loofy-theme'); if (saved)
+    useEffect(() => { const requested=new URLSearchParams(location.search).get('project');if(requested)setSelected(requested);refresh(); api('account').then(setAccount).catch(() => { }); api('events', { method: 'POST', body: JSON.stringify({ name: 'visit' }) }).catch(() => { }); const saved = localStorage.getItem('loofy-theme'); if (saved)
         setTheme(saved); const timer = setInterval(() => { refresh(); api('account').then(setAccount).catch(() => { }); }, 6000); return () => clearInterval(timer); }, []);
     useEffect(() => { localStorage.setItem('loofy-theme', theme); const m = matchMedia('(prefers-color-scheme: dark)'); const sync = () => document.documentElement.classList.toggle('dark', theme === 'dark' || theme === 'system' && m.matches); sync(); m.addEventListener('change', sync); return () => m.removeEventListener('change', sync); }, [theme]);
     useEffect(() => { const context = (document as any).modelContext; if (!context?.registerTool)

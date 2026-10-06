@@ -207,7 +207,7 @@ class Client:
         self.job = copy.deepcopy(job)
 
     def request(self, path, payload=None, method='POST', binary=None):
-        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '3'}
+        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '4'}
         if self.job:
             headers['X-Job-Token'] = self.job['token']
         if os.getenv('VERCEL_AUTOMATION_BYPASS_SECRET'):
@@ -268,6 +268,18 @@ def process(client, job):
         with tempfile.TemporaryDirectory(prefix='loofy-') as directory:
             temp = pathlib.Path(directory)
             source = temp / 'source.mp4'
+            if job['payload'].get('ugc'):
+                from ugc_render import render_product
+                state['stage']='rendering'
+                data=job['payload']['ugc']
+                length=render_product(data,source,lambda n:state.update(progress=n))
+                client.json(f"jobs/{job['id']}/import-prepare",{'duration':length,'name':data['title']})
+                parts=[]
+                with source.open('rb') as stream:
+                    while chunk:=stream.read(PART_SIZE):parts.append(client.upload_part('import',len(parts)+1,chunk))
+                client.json(f"jobs/{job['id']}/import-complete",{'parts':parts})
+                client.json(f"jobs/{job['id']}/finish",{})
+                return
             if job['kind'] == 'transcribe' and job['payload'].get('youtube'):
                 from yt_dlp import YoutubeDL
                 class Quiet:

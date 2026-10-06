@@ -64,3 +64,12 @@ The studio supports campaign/subject search, product/presenter filtering, duplic
 
 ### Storyboard planning
 Up to eight scenes can hold visual direction, exact spoken words and durations. A four-scene outline provides Hook / Benefit / Product demo / Call to action. Plans are limited to 60 seconds total; the studio warns when planned duration differs from the video target. Compiling spoken words into the main script requires confirmation before replacing existing text. Scene notes are saved privately and included in brief downloads. No storyboard video rendering is enabled.
+
+## Local product rendering - 2026-10-06
+Product mode now renders the saved JPEG reference with alternating gentle zoom, blurred fit background, per-scene fade transitions and scene-timed captions. Output is 1080p H.264/AAC MP4 in any supported ratio. Optional voiceover/music MP3 inputs total at most 1 MB; voice starts at zero, music is attenuated under voice, tracks are padded or trimmed to the plan. No audio means a silent AAC track. No TTS, generated presenter, or semantic interpretation of visual notes is implemented. The saved 640px reference is upscaled, not restored to original resolution.
+
+Personal use is server-restricted to verified ADMIN_USER_IDS. Render snapshots are immutable; identical submissions reuse the existing job/output. One active UGC job per owner is allowed, 128 MB of source storage is reserved through existing quota triggers, and results are private projects with an editable full-length clip. Retries preserve the render snapshot and completed outputs are reused. Generated projects remain in the project library independently of brief deletion; delete the project to remove its media. Account workspace deletion removes both.
+
+Worker protocol v4 supports these jobs; v3 workers cannot claim them. Start on Windows with `powershell -ExecutionPolicy Bypass -File scripts/start-processor.ps1`. Keep the machine awake. Python environment and FFmpeg are required; Docker and paid AI APIs are not used. `scripts/ugc-render-smoke.py` verifies all three ratios with generated fixtures.
+
+UGC audio is stored in the private job snapshot for retry. Browser audio selections are not saved in draft metadata and must be selected again before a new render; an already-submitted job retains its own audio. Captions are burned in using storyboard timing, not aligned to speech. Future improvements: original-resolution image uploads, per-scene images, editable render captions and voice alignment.

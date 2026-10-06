@@ -1,7 +1,9 @@
 import {db,HttpError} from './server';
+import {isAdmin} from './credits';
+import {ugcRenders} from './ugc-render';
 import {validateUgcDraft} from './ugc-domain.mjs';
 export async function ugcApi(method:string,owner:string,id:string|undefined,body:any){
- if(method==='GET')return {generationEnabled:false,drafts:(await db().prepare('SELECT id,data,updated FROM ugc_drafts WHERE owner=? ORDER BY updated DESC').bind(owner).all<any>()).results.map(row=>({...row,data:JSON.parse(row.data)}))};
+ if(method==='GET')return {generationEnabled:false,renderEnabled:isAdmin(owner),renders:await ugcRenders(owner),drafts:(await db().prepare('SELECT id,data,updated FROM ugc_drafts WHERE owner=? ORDER BY updated DESC').bind(owner).all<any>()).results.map(row=>({...row,data:JSON.parse(row.data)}))};
  if(method==='DELETE'&&id){const result=await db().prepare('DELETE FROM ugc_drafts WHERE id=? AND owner=?').bind(id,owner).run();if(!result.meta.changes)throw new HttpError(404,'Draft not found.');return {ok:true};}
  if(method!=='POST'&&method!=='PUT')throw new HttpError(405,'Method not allowed.');
  let data;try{data=validateUgcDraft(body)}catch(e){throw new HttpError(400,(e as Error).message);}
