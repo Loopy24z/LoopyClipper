@@ -25,7 +25,7 @@ export async function ugcRender(owner:string,draftId:string,body:any){
  const usage=await db().prepare("SELECT (SELECT COALESCE(SUM(size),0) FROM projects WHERE owner=?)+(SELECT COALESCE(SUM(j.size),0) FROM jobs j JOIN projects p ON p.id=j.project WHERE p.owner=? AND j.kind='export') AS bytes").bind(owner,owner).first<any>();
  if(Number(usage.bytes)+134217728>10737418240)throw new HttpError(409,'Free some project storage before rendering.');
  await db().prepare("INSERT INTO projects(id,owner,name,size,duration,language,status,created) VALUES(?,?,?,134217728,?,?,'queued',?)").bind(key,owner,data.title,duration,data.language,Date.now()).run();
- await db().prepare("INSERT INTO jobs(id,project,kind,payload,created) VALUES(?,?,'transcribe',?,?)").bind(key,key,JSON.stringify({renderVersion:4,ugc:snapshot,ugcDraftId:draftId}),Date.now()).run();
+ await db().prepare("INSERT INTO jobs(id,project,kind,payload,created) VALUES(?,?,'transcribe',?,?)").bind(key,key,JSON.stringify({renderVersion:5,ugc:snapshot,ugcDraftId:draftId}),Date.now()).run();
  }
  return {projectId:key,status:'queued'};
  });

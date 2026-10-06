@@ -4,7 +4,7 @@ import {validateUgcDraft} from '../lib/ugc-domain.mjs';
 const draft={title:'Campaign',product:'Product',script:'Hello',mode:'product',language:'id',style:'natural',ratio:'9:16',duration:10,rights:false,image:''};
 test('UGC drafts validate inputs and never retain provider or ownership fields',()=>{
  assert.deepEqual(validateUgcDraft({...draft,owner:'other',generationEnabled:true}),draft);
- for(const change of [{title:''},{script:'x'.repeat(3001)},{duration:90},{language:'xx'},{rights:'true'},{image:'https://example.com/image.jpg'},{image:'data:image/svg+xml;base64,AAAA'},{image:'data:image/jpeg;base64,AAAA'},{image:'x'.repeat(220001)}])assert.throws(()=>validateUgcDraft({...draft,...change}));
+ for(const change of [{title:''},{script:'x'.repeat(3001)},{duration:90},{language:'xx'},{rights:'true'},{image:'https://example.com/image.jpg'},{image:'data:image/svg+xml;base64,AAAA'},{image:'data:image/jpeg;base64,AAAA'},{image:'x'.repeat(220001)}])assert.throws(()=>validateUgcDraft({...sample,...change}));
  assert.equal(validateUgcDraft({...draft,mode:'presenter',language:'en',ratio:'16:9',duration:15}).mode,'presenter');
 });
 test('storyboard validates bounded scenes and preserves legacy drafts',()=>{
@@ -12,4 +12,10 @@ test('storyboard validates bounded scenes and preserves legacy drafts',()=>{
  assert.deepEqual(validateUgcDraft({...draft,scenes:[{...scene,providerJob:'untrusted'}]}).scenes,[scene]);
  for(const scenes of [null,{},Array(9).fill(scene),[{...scene,seconds:0}],[{...scene,seconds:1.5}],[{...scene,narration:'x'.repeat(351)}],Array(5).fill({...scene,seconds:15})])assert.throws(()=>validateUgcDraft({...draft,scenes}));
  assert.equal(validateUgcDraft(draft).scenes,undefined);
+});
+
+test('scene effects and caption choices persist and reject filter injection',()=>{
+ const sample={...draft,captionStyle:'highlight',captionPosition:'top',scenes:[{title:'Hook',visual:'',narration:'Hello',seconds:2,motion:'still',transition:'cut'}]};
+ assert.deepEqual(validateUgcDraft(sample),sample);
+ for(const change of [{captionStyle:'drawtext'},{captionPosition:'outside'},{scenes:[{...sample.scenes[0],motion:'1;movie=http://bad'}]}])assert.throws(()=>validateUgcDraft({...sample,...change}));
 });

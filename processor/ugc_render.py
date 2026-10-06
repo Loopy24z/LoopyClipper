@@ -31,8 +31,11 @@ def render_product(data, output, progress=None):
     for index,scene in enumerate(scenes):
         seconds=scene['seconds'];frames=seconds*fps
         # Fit the entire product over a blurred background; alternating gentle push/pull.
-        zoom=f'1+0.035*on/{frames}' if index%2==0 else f'1.035-0.035*on/{frames}'
-        vf=f"[0:v]split=2[bg][fg];[bg]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},boxblur=20:2[blur];[fg]scale={width}:{height}:force_original_aspect_ratio=decrease[fit];[blur][fit]overlay=(W-w)/2:(H-h)/2,zoompan=z='{zoom}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={frames}:s={width}x{height}:fps={fps},fade=t=in:st=0:d=0.15,fade=t=out:st={seconds-0.15}:d=0.15,setsar=1,format=yuv420p[out]"
+        motion=scene.get('motion','auto')
+        if motion not in ('auto','still','push','pull') or scene.get('transition','fade') not in ('fade','cut'):raise ValueError('Unsupported scene effect.')
+        zoom='1' if motion=='still' else f'1+0.035*on/{frames}' if motion=='push' or motion=='auto' and index%2==0 else f'1.035-0.035*on/{frames}'
+        fade=f'fade=t=in:st=0:d=0.15,fade=t=out:st={seconds-0.15}:d=0.15,' if scene.get('transition','fade')=='fade' else ''
+        vf=f"[0:v]split=2[bg][fg];[bg]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},boxblur=20:2[blur];[fg]scale={width}:{height}:force_original_aspect_ratio=decrease[fit];[blur][fit]overlay=(W-w)/2:(H-h)/2,zoompan=z='{zoom}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={frames}:s={width}x{height}:fps={fps},{fade}setsar=1,format=yuv420p[out]"
         run(['-threads','2','-protocol_whitelist','file,pipe','-i','reference.jpg','-filter_complex_threads','1','-filter_complex',vf,'-map','[out]','-frames:v',str(frames),'-an','-c:v','libx264','-preset','veryfast','-crf','22','-threads','2',f'scene-{index}.mp4'],folder)
         text=scene.get('narration','').strip().split();scene_start=len(words)
         for n,word in enumerate(text):words.append({'text':word,'start':offset+n*seconds/len(text),'end':offset+(n+1)*seconds/len(text)})
@@ -41,7 +44,7 @@ def render_product(data, output, progress=None):
         if progress:progress(int((index+1)/len(scenes)*75))
     (folder/'scenes.txt').write_text(''.join(f"file 'scene-{i}.mp4'\n" for i in range(len(scenes))),encoding='utf8')
     run(['-f','concat','-safe','1','-i','scenes.txt','-c','copy','joined.mp4'],folder)
-    clip={'start':0,'end':total,'ratio':data['ratio'],'captions':True,'fontSize':44,'fontFamily':'lato','color':'#ffffff','background':'#000000','textEffect':'outline','captionPosition':'bottom','captionWords':5,'headlineEnabled':False}
+    clip={'start':0,'end':total,'ratio':data['ratio'],'captions':data.get('captionStyle')!='none','fontSize':44,'font':'sans','color':'#ffffff','background':'#000000','textEffect':data.get('captionStyle','outline'),'captionPosition':data.get('captionPosition','bottom'),'captionWords':5,'headlineEnabled':False}
     captions=ass_subtitles([],clip)+''.join(line+'\n' for group in scene_words for line in ass_subtitles(group,clip).splitlines() if line.startswith('Dialogue:'))
     (folder/'captions.ass').write_text(captions,encoding='utf8')
     args=['-i','joined.mp4'];audio=[]
