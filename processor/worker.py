@@ -207,7 +207,7 @@ class Client:
         self.job = copy.deepcopy(job)
 
     def request(self, path, payload=None, method='POST', binary=None):
-        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '5'}
+        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '6'}
         if self.job:
             headers['X-Job-Token'] = self.job['token']
         if os.getenv('VERCEL_AUTOMATION_BYPASS_SECRET'):

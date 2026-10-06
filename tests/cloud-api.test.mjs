@@ -131,7 +131,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call('ugc/'+draft.data.id+'/render','POST',{})).data.projectId,productJob.data.projectId);
  assert.equal((await call('ugc/'+draft.data.id+'/render','POST',{voice:'https://bad.test/a.mp3'})).status,400);
  const oldWorker=await call('worker/claim','POST',undefined,{...auth,'X-Render-Version':'3'});assert.equal(oldWorker.data.job,null);
- const productClaim=(await call('worker/claim','POST',undefined,{...auth,'X-Render-Version':'5'})).data.job;assert.equal(productClaim.id,productJob.data.projectId);
+ const productClaim=(await call('worker/claim','POST',undefined,{...auth,'X-Render-Version':'6'})).data.job;assert.equal(productClaim.id,productJob.data.projectId);
  const ph={...auth,'X-Job-Token':productClaim.token};
  assert.equal((await call('worker/jobs/'+productClaim.id+'/finish','POST',{},ph)).status,409);
  assert.equal((await call('worker/jobs/'+productClaim.id+'/import-prepare','POST',{duration:3,name:'Product fixture'},ph)).status,200);

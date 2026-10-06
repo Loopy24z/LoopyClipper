@@ -33,9 +33,13 @@ def render_product(data, output, progress=None):
         # Fit the entire product over a blurred background; alternating gentle push/pull.
         motion=scene.get('motion','auto')
         if motion not in ('auto','still','push','pull') or scene.get('transition','fade') not in ('fade','cut'):raise ValueError('Unsupported scene effect.')
-        zoom='1' if motion=='still' else f'1+0.035*on/{frames}' if motion=='push' or motion=='auto' and index%2==0 else f'1.035-0.035*on/{frames}'
+        strength=.12 if scene.get('intensity')=='dynamic' else .035
+        zoom='1' if motion=='still' else f'1+{strength}*on/{frames}' if motion=='push' or motion=='auto' and index%2==0 else f'{1+strength}-{strength}*on/{frames}'
         fade=f'fade=t=in:st=0:d=0.15,fade=t=out:st={seconds-0.15}:d=0.15,' if scene.get('transition','fade')=='fade' else ''
-        vf=f"[0:v]split=2[bg][fg];[bg]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},boxblur=20:2[blur];[fg]scale={width}:{height}:force_original_aspect_ratio=decrease[fit];[blur][fit]overlay=(W-w)/2:(H-h)/2,zoompan=z='{zoom}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={frames}:s={width}x{height}:fps={fps},{fade}setsar=1,format=yuv420p[out]"
+        framing=scene.get('framing','fit')
+        if framing not in ('fit','cover') or scene.get('intensity','gentle') not in ('gentle','dynamic'):raise ValueError('Unsupported framing.')
+        foreground=f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}' if framing=='cover' else f'scale={width}:{height}:force_original_aspect_ratio=decrease'
+        vf=f"[0:v]split=2[bg][fg];[bg]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},boxblur=20:2[blur];[fg]{foreground}[fit];[blur][fit]overlay=(W-w)/2:(H-h)/2,zoompan=z='{zoom}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={frames}:s={width}x{height}:fps={fps},{fade}setsar=1,format=yuv420p[out]"
         run(['-threads','2','-protocol_whitelist','file,pipe','-i','reference.jpg','-filter_complex_threads','1','-filter_complex',vf,'-map','[out]','-frames:v',str(frames),'-an','-c:v','libx264','-preset','veryfast','-crf','22','-threads','2',f'scene-{index}.mp4'],folder)
         text=scene.get('narration','').strip().split();scene_start=len(words)
         for n,word in enumerate(text):words.append({'text':word,'start':offset+n*seconds/len(text),'end':offset+(n+1)*seconds/len(text)})
@@ -44,7 +48,7 @@ def render_product(data, output, progress=None):
         if progress:progress(int((index+1)/len(scenes)*75))
     (folder/'scenes.txt').write_text(''.join(f"file 'scene-{i}.mp4'\n" for i in range(len(scenes))),encoding='utf8')
     run(['-f','concat','-safe','1','-i','scenes.txt','-c','copy','joined.mp4'],folder)
-    clip={'start':0,'end':total,'ratio':data['ratio'],'captions':data.get('captionStyle')!='none','fontSize':44,'font':'sans','color':'#ffffff','background':'#000000','textEffect':data.get('captionStyle','outline'),'captionPosition':data.get('captionPosition','bottom'),'captionWords':5,'headlineEnabled':False}
+    clip={'start':0,'end':total,'ratio':data['ratio'],'captions':data.get('captionStyle')!='none','fontSize':data.get('captionSize',44),'font':'sans','color':'#ffffff','background':'#000000','textEffect':data.get('captionStyle','outline'),'captionPosition':data.get('captionPosition','bottom'),'captionWords':5,'headlineEnabled':False}
     captions=ass_subtitles([],clip)+''.join(line+'\n' for group in scene_words for line in ass_subtitles(group,clip).splitlines() if line.startswith('Dialogue:'))
     (folder/'captions.ass').write_text(captions,encoding='utf8')
     args=['-i','joined.mp4'];audio=[]
@@ -54,9 +58,15 @@ def render_product(data, output, progress=None):
             raw=base64.b64decode(data[key].split(',',1)[1],validate=True)
             (folder/(key+'.mp3')).write_bytes(raw)
             args+=['-protocol_whitelist','file,pipe','-f','mp3','-i',key+'.mp3'];audio.append(key)
+    preset=data.get('musicPreset','none')
+    if preset not in ('none','pulse','calm'):raise ValueError('Unsupported music preset.')
+    if not data.get('music') and preset!='none':
+        track=pathlib.Path(__file__).resolve().parents[1]/'public'/'audio'/(preset+'.wav')
+        if not track.is_file():raise ValueError('Built-in music is missing. Update the Windows worker files.')
+        args+=['-stream_loop','-1','-i',str(track)];audio.append('music')
     if not audio:args+=['-f','lavfi','-i','anullsrc=r=48000:cl=stereo'];audio=['silence']
     filters=[]
-    for i,key in enumerate(audio,1):filters.append(f'[{i}:a]aresample=48000,volume={0.18 if key=="music" and "voice" in audio else 1},apad,atrim=0:{total}[a{i}]')
+    for i,key in enumerate(audio,1):filters.append(f'[{i}:a]aresample=48000,volume={0.18 if key=="music" and "voice" in audio else 0.55 if key=="music" else 1},apad,atrim=0:{total},afade=t=out:st={max(0,total-.4)}:d=0.4[a{i}]')
     if len(audio)==2:filters.append('[a1][a2]amix=inputs=2:normalize=0,alimiter=limit=0.95[aout]')
     else:filters.append('[a1]alimiter=limit=0.95[aout]')
     args+=['-filter_complex_threads','1','-filter_complex',';'.join(filters),'-map','0:v','-map','[aout]','-vf','ass=captions.ass','-t',str(total),'-c:v','libx264','-preset','veryfast','-crf','22','-threads','2','-c:a','aac','-b:a','128k','-pix_fmt','yuv420p','-movflags','+faststart',str(output)]
