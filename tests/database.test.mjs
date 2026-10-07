@@ -120,3 +120,13 @@ test('transaction-scoped statements and nested batch roll back together', async 
   }),/rollback fixture/);
   assert.equal((await database.prepare('SELECT daily FROM credit_settings WHERE id=1').first()).daily,10);
 });
+
+test('creative-plan storage stays private to backend roles', async t => {
+ const {pg}=await setup(t);
+ await pg.exec('CREATE ROLE anon; CREATE ROLE authenticated;');
+ for(const name of ['0003_ugc_drafts.sql','0004_ugc_plans.sql'])await pg.exec(await readFile(new URL('../supabase/migrations/'+name,import.meta.url),'utf8'));
+ assert.equal((await pg.query("SELECT relrowsecurity FROM pg_class WHERE relname='ugc_plans'")).rows[0].relrowsecurity,true);
+ await pg.exec('SET ROLE anon');await assert.rejects(pg.query('SELECT * FROM ugc_plans'),/permission denied/);
+ await pg.exec('RESET ROLE; SET ROLE authenticated');await assert.rejects(pg.query("UPDATE ugc_plans SET status='complete'"),/permission denied/);
+ await pg.exec('RESET ROLE');
+});

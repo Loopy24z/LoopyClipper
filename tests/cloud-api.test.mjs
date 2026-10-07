@@ -127,6 +127,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call('billing','POST',{plan:'creator'})).status,403);
  // Personal UGC: real route validation, idempotency, capability, storage upload, finish and ownership.
  assert.equal((await call('ugc/'+draft.data.id+'/render','POST',{})).status,403);
+ assert.equal((await call('ugc/'+draft.data.id+'/plan','POST',{facts:'Compact shaver',audience:'Travelers',cta:'View details'})).status,403);
  adminIds=owner;
  const product={...brief,rights:true,image:'data:image/jpeg;base64,/9j/AA=='};
  assert.equal((await call('ugc/'+draft.data.id,'PUT',product)).status,200);
@@ -156,6 +157,15 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call('worker/ugc-plan/finish','POST',{...planned,result:{scenes:[]}},auth)).status,400);
  assert.equal((await call('worker/ugc-plan/finish','POST',{...planned,result:planFixture},auth)).status,200);
  assert.equal((await call('ugc/'+draft.data.id+'/plan')).data.plan.result.scenes[0].layout,'hero');
+ // Expired claims are reissued and previous tokens cannot finish a replacement job.
+ await call('ugc/'+draft.data.id+'/plan','POST',planBrief);
+ const expired=(await call('worker/ugc-plan/claim','POST',{},auth)).data.job;
+ await db.prepare('UPDATE ugc_plans SET lease=0 WHERE draft=?').bind(draft.data.id).run();
+ const replacement=(await call('worker/ugc-plan/claim','POST',{},auth)).data.job;
+ assert.notEqual(expired.token,replacement.token);
+ assert.equal((await call('worker/ugc-plan/finish','POST',{...expired,result:planFixture},auth)).status,409);
+ assert.equal((await call('worker/ugc-plan/finish','POST',{...replacement,result:planFixture},auth)).status,200);
+
  assert.equal((await call('ugc')).data.drafts.find(d=>d.id===draft.data.id).data.script,product.script,'background plan does not overwrite draft');
  adminIds='';
  current='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
