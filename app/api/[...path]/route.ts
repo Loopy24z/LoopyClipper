@@ -1,3 +1,4 @@
+import {creativePlan,planWorker} from '@/lib/ugc-plan-api';
 import {account,chargeStatement,refund} from '@/lib/credits';
 import {billingApi} from '@/lib/billing-api';
 import {templatesApi} from '@/lib/templates-api';
@@ -42,6 +43,7 @@ async function handler(r: Request) {
         const u = await user(r);
         const owner = u.userId;
         const wallet = await account(owner,u.email);
+        if(route==='ugc'&&pid&&action==='plan')return json(await creativePlan(owner,pid,method,method==='POST'?await body(r):{}));
         if(route==='ugc'&&pid==='renders'&&method==='GET')return json({renderEnabled:wallet.admin,renders:await ugcRenders(owner)});
         if(route==='ugc'&&pid&&action==='render'&&method==='POST')return json(await ugcRender(owner,pid,await body(r)));
         if(route==='ugc')return json(await ugcApi(method,owner,pid,method==='POST'||method==='PUT'?await body(r):{}));
@@ -272,12 +274,13 @@ async function worker(r: Request, [action, jid, sub, partNumber]: string[]) {
     const secret = bindings().PROCESSOR_TOKEN;
     if (!secret || r.headers.get('authorization') !== `Bearer ${secret}`)
         throw new HttpError(401, 'Unauthorized.');
+    if(action==='ugc-plan'&&r.method==='POST')return json(await planWorker(jid,await body(r)));
     if (action === 'claim' && r.method === 'POST') {
         await db().prepare('INSERT INTO service_state(id,seen) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET seen=excluded.seen').bind('processor', Date.now()).run();
         await db().prepare("UPDATE jobs SET status='failed',error='Processing was interrupted repeatedly. Please retry.' WHERE status='running' AND lease<? AND attempts>=3").bind(Date.now()).run();
         await db().prepare("UPDATE credit_ledger SET refunded=1 WHERE refunded=0 AND project IN (SELECT project FROM jobs WHERE kind='transcribe' AND status='failed')").run();
         await db().prepare("UPDATE projects SET status='failed',error='Processing was interrupted repeatedly. Please retry.' WHERE id IN (SELECT project FROM jobs WHERE kind='transcribe' AND status='failed') AND status IN ('queued','transcribing','finding highlights','downloading')").run();
-        const job = await db().prepare("UPDATE jobs SET status='running',token=?,lease=?,attempts=attempts+1 WHERE id=(SELECT j.id FROM jobs j JOIN projects p ON p.id=j.project WHERE p.status<>'deleting' AND COALESCE((j.payload::jsonb->>'renderVersion')::int,1)<=? AND (j.status='queued' OR (j.status='running' AND j.lease<? AND j.attempts<3)) ORDER BY j.created LIMIT 1 FOR UPDATE OF j SKIP LOCKED) RETURNING *").bind(id(), Date.now() + 90000, r.headers.get('x-render-version')==='6'?6:r.headers.get('x-render-version')==='5'?5:r.headers.get('x-render-version')==='4'?4:r.headers.get('x-render-version')==='3'?3:r.headers.get('x-render-version')==='2'?2:1, Date.now()).first<any>();
+        const job = await db().prepare("UPDATE jobs SET status='running',token=?,lease=?,attempts=attempts+1 WHERE id=(SELECT j.id FROM jobs j JOIN projects p ON p.id=j.project WHERE p.status<>'deleting' AND COALESCE((j.payload::jsonb->>'renderVersion')::int,1)<=? AND (j.status='queued' OR (j.status='running' AND j.lease<? AND j.attempts<3)) ORDER BY j.created LIMIT 1 FOR UPDATE OF j SKIP LOCKED) RETURNING *").bind(id(), Date.now() + 90000, r.headers.get('x-render-version')==='7'?7:r.headers.get('x-render-version')==='6'?6:r.headers.get('x-render-version')==='5'?5:r.headers.get('x-render-version')==='4'?4:r.headers.get('x-render-version')==='3'?3:r.headers.get('x-render-version')==='2'?2:1, Date.now()).first<any>();
         if (!job)
             return json({ job: null });
         const p = await db().prepare('SELECT * FROM projects WHERE id=?').bind(job.project).first<any>();

@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import ts from 'typescript';
 import {PGlite} from '@electric-sql/pglite';
 import {createDatabase} from '../lib/database.ts';
+import * as planDomain from '../lib/ugc-plan-domain.mjs';
 import * as ugcDomain from '../lib/ugc-domain.mjs';
 import * as templateDomain from '../lib/template-settings.mjs';
 import * as domain from '../lib/domain.mjs';
@@ -21,6 +22,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  await pg.exec(await readFile(new URL('../supabase/migrations/0001_loofy.sql',import.meta.url),'utf8'));
  await pg.exec(await readFile(new URL('../supabase/migrations/0002_clip_templates.sql',import.meta.url),'utf8'));
  await pg.exec(await readFile(new URL('../supabase/migrations/0003_ugc_drafts.sql',import.meta.url),'utf8'));
+ await pg.exec(await readFile(new URL('../supabase/migrations/0004_ugc_plans.sql',import.meta.url),'utf8'));
  const driver=c=>({unsafe:async(sql,values)=>{const r=await c.query(sql,values);return Object.assign(r.rows,{count:r.affectedRows??r.rows.length})},begin:fn=>c.transaction(tx=>fn(driver(tx)))});
  const db=createDatabase(driver(pg));
  const objects=new Map();
@@ -43,7 +45,8 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  const templates=await load('../lib/templates-api.ts',{'./server':server,'./template-settings.mjs':templateDomain});
  const ugcRender=await load('../lib/ugc-render.ts',{'./server':server,'./credits':credits,'./ugc-domain.mjs':ugcDomain});
  const ugc=await load('../lib/ugc-api.ts',{'./server':server,'./credits':credits,'./ugc-render':ugcRender,'./ugc-domain.mjs':ugcDomain});
- const route=await load('../app/api/[...path]/route.ts',{'@/lib/ugc-render':ugcRender,'@/lib/ugc-api':ugc,'@/lib/templates-api':templates,'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
+ const plans=await load('../lib/ugc-plan-api.ts',{'./server':server,'./credits':credits,'./ugc-plan-domain.mjs':planDomain});
+ const route=await load('../app/api/[...path]/route.ts',{'@/lib/ugc-plan-api':plans,'@/lib/ugc-render':ugcRender,'@/lib/ugc-api':ugc,'@/lib/templates-api':templates,'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
  async function call(path,method='GET',body,headers={}){
   const r=await route[method](new Request('https://app.example/api/'+path,{method,headers:{Origin:'https://app.example',...headers},...(body===undefined?{}:{body:JSON.stringify(body)})}));
   return {status:r.status,data:r.status===307?r.headers.get('location'):await r.json()};
@@ -131,7 +134,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call('ugc/'+draft.data.id+'/render','POST',{})).data.projectId,productJob.data.projectId);
  assert.equal((await call('ugc/'+draft.data.id+'/render','POST',{voice:'https://bad.test/a.mp3'})).status,400);
  const oldWorker=await call('worker/claim','POST',undefined,{...auth,'X-Render-Version':'3'});assert.equal(oldWorker.data.job,null);
- const productClaim=(await call('worker/claim','POST',undefined,{...auth,'X-Render-Version':'6'})).data.job;assert.equal(productClaim.id,productJob.data.projectId);
+ const productClaim=(await call('worker/claim','POST',undefined,{...auth,'X-Render-Version':'7'})).data.job;assert.equal(productClaim.id,productJob.data.projectId);
  const ph={...auth,'X-Job-Token':productClaim.token};
  assert.equal((await call('worker/jobs/'+productClaim.id+'/finish','POST',{},ph)).status,409);
  assert.equal((await call('worker/jobs/'+productClaim.id+'/import-prepare','POST',{duration:3,name:'Product fixture'},ph)).status,200);
@@ -140,8 +143,23 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call('ugc/renders')).data.renders[0].status,'complete');
  assert.equal((await call('projects/'+productClaim.id)).data.status,'ready');
  assert.equal((await call('ugc/'+draft.data.id+'/render','POST',{})).data.status,'complete');
+
+ const planBrief={facts:'Portable shaver, compact design.',audience:'Travelers',cta:'View product details'};
+ assert.equal((await call('worker/ugc-plan/claim','POST',{})).status,401);
+ assert.equal((await call('ugc/'+draft.data.id+'/plan','POST',planBrief)).status,200);
+ assert.equal((await call('ugc/'+draft.data.id+'/plan','POST',planBrief)).status,200);
+ const planned=(await call('worker/ugc-plan/claim','POST',{},auth)).data.job;
+ assert.equal(planned.draft,draft.data.id);
+ assert.equal((await call('worker/ugc-plan/claim','POST',{},auth)).data.job,null);
+ const planFixture=JSON.parse(await readFile(new URL('./fixtures/ugc-plan.json',import.meta.url),'utf8'));
+ assert.equal((await call('worker/ugc-plan/finish','POST',{...planned,token:'wrong',result:planFixture},auth)).status,409);
+ assert.equal((await call('worker/ugc-plan/finish','POST',{...planned,result:{scenes:[]}},auth)).status,400);
+ assert.equal((await call('worker/ugc-plan/finish','POST',{...planned,result:planFixture},auth)).status,200);
+ assert.equal((await call('ugc/'+draft.data.id+'/plan')).data.plan.result.scenes[0].layout,'hero');
+ assert.equal((await call('ugc')).data.drafts.find(d=>d.id===draft.data.id).data.script,product.script,'background plan does not overwrite draft');
  adminIds='';
  current='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ assert.equal((await call('ugc/'+draft.data.id+'/plan')).status,404);
  assert.equal((await call('ugc/renders')).data.renders.length,0);
  assert.equal((await call('ugc')).data.drafts.length,0);
  assert.equal((await call('ugc/'+draft.data.id,'PUT',brief)).status,404);
@@ -153,5 +171,8 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call(`projects/${pid}`)).status,404);
  assert.equal((await call(`exports/${exportJob.id}`)).status,404);
  assert.equal((await call('admin')).status,403);
+ current=owner;
+ assert.equal((await call('ugc/'+draft.data.id,'DELETE')).status,200);
+ assert.equal((await db.prepare('SELECT draft FROM ugc_plans WHERE draft=?').bind(draft.data.id).first()),null);
  assert.equal((await call(`worker/jobs/${pid}/source`,'GET',undefined,{...auth,'X-Job-Token':'stale'})).status,409);
 });

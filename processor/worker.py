@@ -207,7 +207,7 @@ class Client:
         self.job = copy.deepcopy(job)
 
     def request(self, path, payload=None, method='POST', binary=None):
-        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '6'}
+        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '7'}
         if self.job:
             headers['X-Job-Token'] = self.job['token']
         if os.getenv('VERCEL_AUTOMATION_BYPASS_SECRET'):
@@ -390,6 +390,12 @@ def main():
     client = Client(url, token)
     while True:
         try:
+            from ugc_planner import process_plan
+            planned=client.json('ugc-plan/claim',{})
+            if planned.get('job'):
+                process_plan(client,planned['job'])
+                if args.once:return
+                continue
             result = client.json('claim')
             if result['job']:
                 process(client, result['job'])

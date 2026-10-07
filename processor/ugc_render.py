@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import subprocess
+import textwrap
 
 def run(args, cwd, timeout=600):
     try:
@@ -14,7 +15,7 @@ def run(args, cwd, timeout=600):
         raise ValueError('The image or MP3 could not be rendered. Try a different JPEG reference or MP3 recording.') from exc
 
 def render_product(data, output, progress=None):
-    from worker import dimensions, ass_subtitles
+    from worker import dimensions, ass_subtitles, clean_text
     folder=pathlib.Path(output).parent
     if not data.get('rights') or data.get('mode')!='product':raise ValueError('Product image permission is required.')
     image=data.get('image','')
@@ -27,7 +28,13 @@ def render_product(data, output, progress=None):
     if not 1<=len(scenes)<=8 or any(not isinstance(s.get('seconds'),int) or not 1<=s['seconds']<=15 for s in scenes):raise ValueError('Use one to eight scenes, each 1 to 15 seconds.')
     total=sum(s['seconds'] for s in scenes)
     if total>60:raise ValueError('Keep the video within 60 seconds.')
-    width,height=dimensions(data['ratio']);fps=24;words=[];scene_words=[];offset=0
+    width,height=dimensions(data['ratio']);fps=24;words=[];scene_words=[];offset=0;display_events=[]
+    layouts=json.loads((pathlib.Path(__file__).resolve().parents[1]/'lib'/'ugc-layouts.json').read_text(encoding='utf-8-sig'))
+    palette={'violet':('0x151126','0xa78bfa'),'cyan':('0x071d28','0x22d3ee'),'amber':('0x251a0b','0xfbbf24')}.get(data.get('palette','violet'))
+    if not palette:raise ValueError('Unsupported palette.')
+    def stamp(t):
+        ticks=round(t*100);return f'{ticks//360000}:{ticks//6000%60:02}:{ticks//100%60:02}.{ticks%100:02}'
+
     for index,scene in enumerate(scenes):
         seconds=scene['seconds'];frames=seconds*fps
         # Fit the entire product over a blurred background; alternating gentle push/pull.
@@ -40,6 +47,17 @@ def render_product(data, output, progress=None):
         if framing not in ('fit','cover') or scene.get('intensity','gentle') not in ('gentle','dynamic'):raise ValueError('Unsupported framing.')
         foreground=f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}' if framing=='cover' else f'scale={width}:{height}:force_original_aspect_ratio=decrease'
         vf=f"[0:v]split=2[bg][fg];[bg]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},boxblur=20:2[blur];[fg]{foreground}[fit];[blur][fit]overlay=(W-w)/2:(H-h)/2,zoompan=z='{zoom}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={frames}:s={width}x{height}:fps={fps},{fade}setsar=1,format=yuv420p[out]"
+        layout=scene.get('layout','full')
+        if layout!='full':
+            if layout not in layouts:raise ValueError('Unsupported composition layout.')
+            design=layouts[layout];x,y,pw,ph=[round(v*(width if i%2==0 else height)/2)*2 for i,v in enumerate(design['image'])]
+            bg,accent=palette
+            vf=f"[0:v]scale={pw}:{ph}:force_original_aspect_ratio=decrease,pad={pw}:{ph}:(ow-iw)/2:(oh-ih)/2:color={bg},zoompan=z='{zoom}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={frames}:s={pw}x{ph}:fps={fps}[product];color=c={bg}:s={width}x{height}:r={fps}:d={seconds},drawbox=x={round(width*.08)}:y={round(height*.04)}:w={round(width*.18)}:h={max(4,round(height*.005))}:color={accent}:t=fill,drawbox=x={x-4}:y={y-4}:w={pw+8}:h={ph+8}:color={accent}:t=3[stage];[stage][product]overlay={x}:{y}:shortest=1,{fade}setsar=1,format=yuv420p[out]"
+            text=clean_text(scene.get('displayText',''))
+            lines='\\N'.join(textwrap.wrap(text,width=25 if width<=height else 40))
+            tx=round(width*design['text'][0]);ty=round(height*design['text'][1]);size=round(min(width,height)*design['size'])
+            tag=f"{{\\an8\\move({tx},{ty+20},{tx},{ty},0,250)\\fs{size}\\b1\\bord0\\shad0\\fad(120,120)}}"
+            display_events.append(f'Dialogue: 1,{stamp(offset)},{stamp(offset+seconds)},Default,,0,0,0,,{tag}{lines}')
         run(['-threads','2','-protocol_whitelist','file,pipe','-i','reference.jpg','-filter_complex_threads','1','-filter_complex',vf,'-map','[out]','-frames:v',str(frames),'-an','-c:v','libx264','-preset','veryfast','-crf','22','-threads','2',f'scene-{index}.mp4'],folder)
         text=scene.get('narration','').strip().split();scene_start=len(words)
         for n,word in enumerate(text):words.append({'text':word,'start':offset+n*seconds/len(text),'end':offset+(n+1)*seconds/len(text)})
@@ -50,7 +68,7 @@ def render_product(data, output, progress=None):
     run(['-f','concat','-safe','1','-i','scenes.txt','-c','copy','joined.mp4'],folder)
     clip={'start':0,'end':total,'ratio':data['ratio'],'captions':data.get('captionStyle')!='none','fontSize':data.get('captionSize',44),'font':'sans','color':'#ffffff','background':'#000000','textEffect':data.get('captionStyle','outline'),'captionPosition':data.get('captionPosition','bottom'),'captionWords':5,'headlineEnabled':False}
     captions=ass_subtitles([],clip)+''.join(line+'\n' for group in scene_words for line in ass_subtitles(group,clip).splitlines() if line.startswith('Dialogue:'))
-    (folder/'captions.ass').write_text(captions,encoding='utf8')
+    (folder/'captions.ass').write_text(captions+'\n'.join(display_events)+'\n',encoding='utf8')
     args=['-i','joined.mp4'];audio=[]
     for key in ('voice','music'):
         if data.get(key):
