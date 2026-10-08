@@ -1,0 +1,11 @@
+﻿# Clipper: modern captions and contextual boundaries (2026-10-08)
+
+Three opt-in caption animations: Pop (180 ms scale in), Rise (180 ms fade/lift), Word Reveal (word-timestamp visibility). Fifteen looks in total; the three animated looks appear first. Animation is independent of font/effect, persists in clips/templates, and renders through ASS. Preview animation is derived from the playhead, so pause/seek do not restart arbitrary CSS animations. Caption overrides remain one phrase; reveal requires transcript timing. Preview text width now matches the renderer's 6.5% horizontal margins.
+
+Clipper captions group at punctuation, 450 ms speech gaps and edit boundaries, within the selected word limit. UGC retains its existing five-word grouping. New clip exports require worker protocol 8 so an older worker cannot silently omit animations.
+
+Highlight candidates evaluate multiple sentence endings between 15 and 90 seconds instead of always choosing the ending nearest 30 seconds. Complete endings, answers after questions and conclusion cues receive preference. Dependent sentence openings are skipped in favor of preceding context; gaps above 2.5 seconds separate passages. Sparse punctuation still uses word-boundary fallback, clearly labelled for review. Suggestions remain transcript heuristics, not semantic AI or virality predictions. Durations and number of suggestions vary; quantity is not increased by forcing short fragments.
+
+Natural pause removal now keeps gaps under 1.15 seconds, Balanced under .8 seconds, Tight under .55 seconds, with additional breathing room around speech. Existing edits are not silently regenerated. Use Refresh suggestions for a processed source; reviewed clips are preserved. On an existing clip, select Natural to recalculate its pause cuts, or Keep pauses to restore.
+
+Validation: 39 Node tests passed; 12 Python processor/transport tests passed. Production build passed. Real React editor tested with mock API for all three presets, autosave/reopen, reveal visibility and keyboard selection. Actual FFmpeg H.264/AAC exports tested for all three animations with source jump cuts; frames inspected. Existing processor tests also cover all three aspect ratios and audio/video-only sources. These checks do not measure human preference on arbitrary podcasts; review actual source context and transcript accuracy.

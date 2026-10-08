@@ -10,8 +10,8 @@ test('templates contain reusable style only, never source text or cuts',()=>{
  assert.throws(()=>templateSettings({...base,fontSize:500}));
  assert.throws(()=>templateSettings({...base,color:'red'}));
 });
-test('all 12 visual presets use valid render settings',()=>{
- assert.equal(captionPresets.length,12);
- assert.equal(new Set(captionPresets.map(p=>p.id)).size,12);
+test('all 15 visual presets use valid render settings',()=>{
+ assert.equal(captionPresets.length,15);
+ assert.equal(new Set(captionPresets.map(p=>p.id)).size,15);
  for(const preset of captionPresets){const style=templateSettings({...base,...preset});assert.equal(style.textEffect,preset.textEffect);assert.equal(style.color,preset.color);}
 });

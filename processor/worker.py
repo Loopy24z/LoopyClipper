@@ -79,7 +79,12 @@ def caption_groups(words, clip):
         relevant = [dict(w, start=max(segment['start'], w['start'])-segment['start']+offset,
                          end=min(segment['end'], w['end'])-segment['start']+offset)
                     for w in words if w['end'] > segment['start'] and w['start'] < segment['end']]
-        groups.extend(relevant[i:i+count] for i in range(0, len(relevant), count))
+        group=[]
+        for word in relevant:
+            if group and (len(group)>=count or (clip.get('captionPhrases',True) and (re.search(r'[.!?,;:]$',group[-1]['text']) or word['start']-group[-1]['end']>=.45))):
+                groups.append(group);group=[]
+            group.append(word)
+        if group:groups.append(group)
         offset += segment['end']-segment['start']
     if clip.get('captionText'):
         return [[{'start': 0, 'end': offset, 'text': clip['captionText']}]]
@@ -106,6 +111,8 @@ def ass_subtitles(words, clip):
         return f'{ticks//360000}:{ticks//6000%60:02}:{ticks//100%60:02}.{ticks%100:02}'
     font = {'sans':'Arial','serif':'Times New Roman','mono':'Courier New','lato':'Lato','anton':'Anton'}.get(clip.get('font'), 'Arial')
     effect = clip.get('textEffect', 'box')
+    animation=clip.get('captionAnimation','none')
+    if animation not in ('none','pop','rise','reveal'):raise ValueError('Invalid caption animation.')
     size = clip['fontSize']
     alignment = {'top':8,'center':5,'bottom':2}.get(clip.get('captionPosition'),2)
     header = f'''[Script Info]
@@ -122,7 +129,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 '''
     events = []
     for group in (caption_groups(words,clip) if clip.get('captions',True) else []):
-        boundaries = sorted(set([group[0]['start'],group[-1]['end']] + ([v for w in group for v in (w['start'],w['end'])] if effect=='highlight' and not clip.get('captionText') else [])))
+        boundaries = sorted(set([group[0]['start'],group[-1]['end']] + ([v for w in group for v in (w['start'],w['end'])] if (effect=='highlight' or animation=='reveal') and not clip.get('captionText') else [])))
         for start,end in zip(boundaries,boundaries[1:]):
             if end <= start: continue
             text = []
@@ -131,8 +138,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 if effect=='highlight' and not clip.get('captionText'):
                     selected = word['start'] <= (start+end)/2 < word['end']
                     value = '{\\c'+color(clip.get('highlightColor','#e5ff00') if selected else clip['color'])+'}'+value
+                if animation=='reveal' and not clip.get('captionText'):
+                    value='{\\alpha'+('&HFF&' if start<word['start'] else '&H00&')+'}'+value
                 text.append(value)
-            events.append(f"Dialogue: 0,{clock(start)},{clock(end)},Default,,0,0,0,,{' '.join(text)}")
+            elapsed=max(0,start-group[0]['start']);progress=min(1,elapsed/.18)
+            remaining=max(0,round((.18-elapsed)*1000));prefix=''
+            if animation=='pop':
+                scale=88+12*progress
+                prefix=f"{{\\fscx{scale:.2f}\\fscy{scale:.2f}\\t(0,{remaining},\\fscx100\\fscy100)}}" if remaining else '{\\fscx100\\fscy100}'
+            elif animation=='rise':
+                margin=round(height*(.32 if alignment==8 and clip.get('headlineEnabled') and clip.get('headline') else .08))
+                y=margin if alignment==8 else height/2 if alignment==5 else height-margin
+                alpha=round(255*(1-progress));dy=size*.45*(1-progress)
+                prefix=f"{{\\alpha&H{alpha:02X}&\\move({width/2},{y+dy:.2f},{width/2},{y},0,{max(1,remaining)})\\t(0,{max(1,remaining)},\\alpha&H00&)}}"
+            events.append(f"Dialogue: 0,{clock(start)},{clock(end)},Default,,0,0,0,,{prefix}{' '.join(text)}")
     if clip.get('headlineEnabled') and clip.get('headline'):
         headline = clean_text(clip['headline']).replace('\n',' ').replace('\r',' ')
         duration = min(float(clip.get('headlineDuration',3)), sum(s['end']-s['start'] for s in clip_segments(clip)))
@@ -207,7 +226,7 @@ class Client:
         self.job = copy.deepcopy(job)
 
     def request(self, path, payload=None, method='POST', binary=None):
-        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '7'}
+        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '8'}
         if self.job:
             headers['X-Job-Token'] = self.job['token']
         if os.getenv('VERCEL_AUTOMATION_BYPASS_SECRET'):

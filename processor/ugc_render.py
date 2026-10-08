@@ -1,4 +1,4 @@
-﻿"""CPU-only photo/storyboard renderer. No model API, Docker, or speech synthesis."""
+"""CPU-only photo/storyboard renderer. No model API, Docker, or speech synthesis."""
 import base64
 import json
 import os
@@ -66,7 +66,7 @@ def render_product(data, output, progress=None):
         if progress:progress(int((index+1)/len(scenes)*75))
     (folder/'scenes.txt').write_text(''.join(f"file 'scene-{i}.mp4'\n" for i in range(len(scenes))),encoding='utf8')
     run(['-f','concat','-safe','1','-i','scenes.txt','-c','copy','joined.mp4'],folder)
-    clip={'start':0,'end':total,'ratio':data['ratio'],'captions':data.get('captionStyle')!='none','fontSize':data.get('captionSize',44),'font':'sans','color':'#ffffff','background':'#000000','textEffect':data.get('captionStyle','outline'),'captionPosition':data.get('captionPosition','bottom'),'wordsPerCaption':5,'headlineEnabled':False}
+    clip={'start':0,'end':total,'ratio':data['ratio'],'captions':data.get('captionStyle')!='none','fontSize':data.get('captionSize',44),'font':'sans','color':'#ffffff','background':'#000000','textEffect':data.get('captionStyle','outline'),'captionPosition':data.get('captionPosition','bottom'),'wordsPerCaption':5,'captionPhrases':False,'headlineEnabled':False}
     captions=ass_subtitles([],clip)+''.join(line+'\n' for group in scene_words for line in ass_subtitles(group,clip).splitlines() if line.startswith('Dialogue:'))
     (folder/'captions.ass').write_text(captions+'\n'.join(display_events)+'\n',encoding='utf8')
     args=['-i','joined.mp4'];audio=[]

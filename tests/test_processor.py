@@ -62,6 +62,16 @@ class ProcessorTests(unittest.TestCase):
   self.assertIn('00:00:00,000 --> 00:00:02,000',result)
   self.assertNotIn('<hello>',result)
   self.assertNotIn('after',result)
+ def test_modern_caption_animations_and_phrase_boundaries(self):
+  words=[{'start':0,'end':.3,'text':'Hello,'},{'start':.4,'end':.7,'text':'new'},{'start':.8,'end':1.2,'text':'world.'}]
+  clip={'start':0,'end':2,'ratio':'9:16','captions':True,'fontSize':52,'color':'#ffffff','background':'#000000','textEffect':'highlight'}
+  self.assertEqual([[w['text'] for w in g] for g in processor.caption_groups(words,clip)],[['Hello,'],['new','world.']])
+  for mode,tag in [('pop',r'\fscx88'),('rise',r'\move('),('reveal',r'\alpha&HFF&')]:
+   result=processor.ass_subtitles(words,{**clip,'captionAnimation':mode})
+   self.assertIn(tag,result)
+   self.assertIn('world.',result)
+  self.assertNotIn(r'\alpha&HFF&',processor.ass_subtitles(words,{**clip,'captionAnimation':'reveal','captionText':'Custom copy'}))
+  with self.assertRaises(ValueError):processor.ass_subtitles(words,{**clip,'captionAnimation':'unsupported'})
  def test_frame_dimensions(self):
   self.assertEqual(processor.dimensions('9:16'),(1080,1920))
   self.assertEqual(processor.dimensions('1:1'),(1080,1080))
