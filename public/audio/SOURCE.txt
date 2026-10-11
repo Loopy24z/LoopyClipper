@@ -1,0 +1,5 @@
+OGG encoder copied unchanged from user-provided repository:
+https://github.com/Loopy24z/sound-convert
+Commit: 305d51597cd57eed042894ac59c8f03bbc569d82
+File: libvorbis.js
+Conversion algorithm adapted from index.html. Original embedded notices retained.

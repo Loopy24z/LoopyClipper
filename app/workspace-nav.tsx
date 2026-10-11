@@ -1,0 +1,2 @@
+import {Scissors,Sparkles,AudioLines} from 'lucide-react';
+export function WorkspaceNav({current}:{current:'clipper'|'ugc'|'audio'}){return <nav className="workspace-switcher" aria-label="Workspace tools">{[{id:'clipper',href:'/',name:'Clipper',Icon:Scissors},{id:'ugc',href:'/ugc',name:'AI UGC',Icon:Sparkles},{id:'audio',href:'/audio',name:'Sound',Icon:AudioLines}].map(({id,href,name,Icon})=><a key={id} href={href} aria-current={current===id?'page':undefined}><Icon size={17}/>{name}</a>)}</nav>}

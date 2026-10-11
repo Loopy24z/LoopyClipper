@@ -3,6 +3,7 @@ import "./globals.css";
 import "./editor.css";
 import "./studio-theme.css";
 import "./loofyai-theme.css";
+import "./responsive.css";
 
 export const metadata: Metadata = {
   title: "LoofyAI — Your creative workspace",
