@@ -9,3 +9,5 @@ https://github.com/zhuker/lamejs
 Commit: 582bbba6a12f981b984d8fb9e1874499fed85675
 License: LAME-LICENSE.txt
 Corresponding source and build scripts: lame-source.zip (same directory).
+The LAME MP3 encoder is used as a separate script. See https://lame.sourceforge.net/ and https://github.com/zhuker/lamejs.
+Full license texts: LGPL-3.0.txt and GPL-3.0.txt.
