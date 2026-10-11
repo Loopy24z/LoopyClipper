@@ -174,7 +174,8 @@ def render(source, output, clip, words, preset=None, progress_file=None):
         framing = f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)*{fraction}:(ih-oh)/2'
     else:
         framing = f'scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black'
-    filters = framing + ',setsar=1'
+    from motion import motion_filter
+    filters = framing + ',setsar=1' + motion_filter(clip, width, height)
     if clip['captions'] or (clip.get('headlineEnabled') and clip.get('headline')):
         subtitles = ass_subtitles(words, clip)
         if subtitles:
@@ -226,7 +227,7 @@ class Client:
         self.job = copy.deepcopy(job)
 
     def request(self, path, payload=None, method='POST', binary=None):
-        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '8'}
+        headers = {'Authorization': f'Bearer {self.token}', 'X-Render-Version': '9'}
         if self.job:
             headers['X-Job-Token'] = self.job['token']
         if os.getenv('VERCEL_AUTOMATION_BYPASS_SECRET'):
@@ -407,6 +408,8 @@ def main():
     if not url or not token:
         raise SystemExit('Set LOOFY_URL and PROCESSOR_TOKEN before starting the worker.')
     client = Client(url, token)
+    from publishing import Publisher
+    publisher = Publisher(client)
     while True:
         try:
             from ugc_planner import process_plan
@@ -418,6 +421,8 @@ def main():
             result = client.json('claim')
             if result['job']:
                 process(client, result['job'])
+            elif publisher.once():
+                pass
             elif args.once:
                 return
             else:

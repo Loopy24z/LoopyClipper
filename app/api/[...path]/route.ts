@@ -1,3 +1,4 @@
+import {publishingApi,publishWorker} from '@/lib/publishing-api';
 import {creativePlan,planWorker} from '@/lib/ugc-plan-api';
 import {account,chargeStatement,refund} from '@/lib/credits';
 import {billingApi} from '@/lib/billing-api';
@@ -43,6 +44,7 @@ async function handler(r: Request) {
         const u = await user(r);
         const owner = u.userId;
         const wallet = await account(owner,u.email);
+        if(route==='publishing'&&pid)return json(await publishingApi(owner,pid,method,['POST','DELETE'].includes(method)?await body(r):{}));
         if(route==='ugc'&&pid&&action==='plan')return json(await creativePlan(owner,pid,method,method==='POST'?await body(r):{}));
         if(route==='ugc'&&pid==='renders'&&method==='GET')return json({renderEnabled:wallet.admin,renders:await ugcRenders(owner)});
         if(route==='ugc'&&pid&&action==='render'&&method==='POST')return json(await ugcRender(owner,pid,await body(r)));
@@ -51,6 +53,8 @@ async function handler(r: Request) {
         if(route === "billing" || route === "admin") return json(await billingApi(route,pid,method,owner,method === "POST" ? await body(r) : {}));
         if (route === 'account') {
             if (method === 'DELETE') {
+                await db().prepare('DELETE FROM publication_jobs WHERE owner=?').bind(owner).run();
+                await db().prepare('DELETE FROM publishing_accounts WHERE owner=?').bind(owner).run();
                 await db().prepare('DELETE FROM clip_templates WHERE owner=?').bind(owner).run();
                 await db().prepare('DELETE FROM ugc_drafts WHERE owner=?').bind(owner).run();
                 const all = await db().prepare('SELECT * FROM projects WHERE owner=?').bind(owner).all();
@@ -237,7 +241,7 @@ async function handler(r: Request) {
                 if (active)
                     return json(active);
                 const jid = id();
-                const inserted = await db().prepare(`INSERT INTO jobs(id,project,clip,kind,payload,created,size) SELECT ?,?,?,?,?,?,1073741824 WHERE (${storageSQL})+1073741824<=10737418240 AND NOT EXISTS (SELECT 1 FROM jobs WHERE clip=? AND status IN ('queued','running')) ON CONFLICT DO NOTHING`).bind(jid, c.project, pid, 'export', JSON.stringify({ renderVersion: 8, clip: JSON.parse(c.data), words: JSON.parse(p.transcript) }), Date.now(), owner, owner, pid).run();
+                const inserted = await db().prepare(`INSERT INTO jobs(id,project,clip,kind,payload,created,size) SELECT ?,?,?,?,?,?,1073741824 WHERE (${storageSQL})+1073741824<=10737418240 AND NOT EXISTS (SELECT 1 FROM jobs WHERE clip=? AND status IN ('queued','running')) ON CONFLICT DO NOTHING`).bind(jid, c.project, pid, 'export', JSON.stringify({ renderVersion: 9, clip: JSON.parse(c.data), words: JSON.parse(p.transcript) }), Date.now(), owner, owner, pid).run();
                 if (!inserted.meta.changes) {
                     const duplicate = await db().prepare("SELECT id FROM jobs WHERE clip=? AND status IN ('queued','running')").bind(pid).first();
                     if (duplicate)
@@ -274,13 +278,14 @@ async function worker(r: Request, [action, jid, sub, partNumber]: string[]) {
     const secret = bindings().PROCESSOR_TOKEN;
     if (!secret || r.headers.get('authorization') !== `Bearer ${secret}`)
         throw new HttpError(401, 'Unauthorized.');
+    if(action==='publish'&&r.method==='POST')return json(await publishWorker(jid,await body(r)));
     if(action==='ugc-plan'&&r.method==='POST')return json(await planWorker(jid,await body(r)));
     if (action === 'claim' && r.method === 'POST') {
         await db().prepare('INSERT INTO service_state(id,seen) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET seen=excluded.seen').bind('processor', Date.now()).run();
         await db().prepare("UPDATE jobs SET status='failed',error='Processing was interrupted repeatedly. Please retry.' WHERE status='running' AND lease<? AND attempts>=3").bind(Date.now()).run();
         await db().prepare("UPDATE credit_ledger SET refunded=1 WHERE refunded=0 AND project IN (SELECT project FROM jobs WHERE kind='transcribe' AND status='failed')").run();
         await db().prepare("UPDATE projects SET status='failed',error='Processing was interrupted repeatedly. Please retry.' WHERE id IN (SELECT project FROM jobs WHERE kind='transcribe' AND status='failed') AND status IN ('queued','transcribing','finding highlights','downloading')").run();
-        const job = await db().prepare("UPDATE jobs SET status='running',token=?,lease=?,attempts=attempts+1 WHERE id=(SELECT j.id FROM jobs j JOIN projects p ON p.id=j.project WHERE p.status<>'deleting' AND COALESCE((j.payload::jsonb->>'renderVersion')::int,1)<=? AND (j.status='queued' OR (j.status='running' AND j.lease<? AND j.attempts<3)) ORDER BY j.created LIMIT 1 FOR UPDATE OF j SKIP LOCKED) RETURNING *").bind(id(), Date.now() + 90000, r.headers.get('x-render-version')==='8'?8:r.headers.get('x-render-version')==='7'?7:r.headers.get('x-render-version')==='6'?6:r.headers.get('x-render-version')==='5'?5:r.headers.get('x-render-version')==='4'?4:r.headers.get('x-render-version')==='3'?3:r.headers.get('x-render-version')==='2'?2:1, Date.now()).first<any>();
+        const job = await db().prepare("UPDATE jobs SET status='running',token=?,lease=?,attempts=attempts+1 WHERE id=(SELECT j.id FROM jobs j JOIN projects p ON p.id=j.project WHERE p.status<>'deleting' AND COALESCE((j.payload::jsonb->>'renderVersion')::int,1)<=? AND (j.status='queued' OR (j.status='running' AND j.lease<? AND j.attempts<3)) ORDER BY j.created LIMIT 1 FOR UPDATE OF j SKIP LOCKED) RETURNING *").bind(id(), Date.now() + 90000, r.headers.get('x-render-version')==='9'?9:r.headers.get('x-render-version')==='8'?8:r.headers.get('x-render-version')==='7'?7:r.headers.get('x-render-version')==='6'?6:r.headers.get('x-render-version')==='5'?5:r.headers.get('x-render-version')==='4'?4:r.headers.get('x-render-version')==='3'?3:r.headers.get('x-render-version')==='2'?2:1, Date.now()).first<any>();
         if (!job)
             return json({ job: null });
         const p = await db().prepare('SELECT * FROM projects WHERE id=?').bind(job.project).first<any>();

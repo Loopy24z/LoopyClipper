@@ -1,9 +1,11 @@
+import sys
 import importlib.util
 import pathlib
 import unittest
 import tempfile
 import subprocess
 import json
+sys.path.insert(0,str(pathlib.Path(__file__).parents[1]/'processor'))
 spec=importlib.util.spec_from_file_location('processor',pathlib.Path(__file__).parents[1]/'processor'/'worker.py')
 processor=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(processor)

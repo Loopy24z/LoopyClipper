@@ -16,6 +16,8 @@ export type ClipData = {
     font?: string;
     textEffect?: string;
     captionAnimation?: string;
+    motion?: string;
+    motionAmount?: number;
     wordsPerCaption?: number;
     captionPosition?: string;
     highlightColor?: string;

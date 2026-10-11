@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import ts from 'typescript';
 import {PGlite} from '@electric-sql/pglite';
 import {createDatabase} from '../lib/database.ts';
+import * as publishingDomain from '../lib/publishing-domain.mjs';
 import * as planDomain from '../lib/ugc-plan-domain.mjs';
 import * as ugcDomain from '../lib/ugc-domain.mjs';
 import * as templateDomain from '../lib/template-settings.mjs';
@@ -23,6 +24,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  await pg.exec(await readFile(new URL('../supabase/migrations/0002_clip_templates.sql',import.meta.url),'utf8'));
  await pg.exec(await readFile(new URL('../supabase/migrations/0003_ugc_drafts.sql',import.meta.url),'utf8'));
  await pg.exec(await readFile(new URL('../supabase/migrations/0004_ugc_plans.sql',import.meta.url),'utf8'));
+ await pg.exec(await readFile(new URL('../supabase/migrations/0005_publications.sql',import.meta.url),'utf8'));
  const driver=c=>({unsafe:async(sql,values)=>{const r=await c.query(sql,values);return Object.assign(r.rows,{count:r.affectedRows??r.rows.length})},begin:fn=>c.transaction(tx=>fn(driver(tx)))});
  const db=createDatabase(driver(pg));
  const objects=new Map();
@@ -46,7 +48,8 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  const ugcRender=await load('../lib/ugc-render.ts',{'./server':server,'./credits':credits,'./ugc-domain.mjs':ugcDomain});
  const ugc=await load('../lib/ugc-api.ts',{'./server':server,'./credits':credits,'./ugc-render':ugcRender,'./ugc-domain.mjs':ugcDomain});
  const plans=await load('../lib/ugc-plan-api.ts',{'./server':server,'./credits':credits,'./ugc-plan-domain.mjs':planDomain});
- const route=await load('../app/api/[...path]/route.ts',{'@/lib/ugc-plan-api':plans,'@/lib/ugc-render':ugcRender,'@/lib/ugc-api':ugc,'@/lib/templates-api':templates,'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
+ const publishing=await load('../lib/publishing-api.ts',{'./server':server,'./credits':credits,'./storage':{storage:bucket},'./publishing-domain.mjs':publishingDomain});
+ const route=await load('../app/api/[...path]/route.ts',{'@/lib/publishing-api':publishing,'@/lib/ugc-plan-api':plans,'@/lib/ugc-render':ugcRender,'@/lib/ugc-api':ugc,'@/lib/templates-api':templates,'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
  async function call(path,method='GET',body,headers={}){
   const r=await route[method](new Request('https://app.example/api/'+path,{method,headers:{Origin:'https://app.example',...headers},...(body===undefined?{}:{body:JSON.stringify(body)})}));
   return {status:r.status,data:r.status===307?r.headers.get('location'):await r.json()};
@@ -68,7 +71,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call('projects','POST',{name:'test.mp4',size:1000,duration:30,language:'en',rights:true},{'Idempotency-Key':pid})).data.id,pid);
  assert.equal((await call(`projects/${pid}/part/1`,'POST',{size:1000})).status,200);
  assert.equal((await call(`projects/${pid}/complete`,'POST',{parts:[{partNumber:1,etag:'part'}]})).status,200);
- const auth={Authorization:'Bearer test-secret','X-Render-Version':'8'};
+ const auth={Authorization:'Bearer test-secret','X-Render-Version':'9'};
  const job=(await call('worker/claim','POST',undefined,auth)).data.job;
  assert.equal(job.project,pid);
  const jobHeaders={...auth,'X-Job-Token':job.token};
@@ -100,12 +103,58 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  assert.equal((await call(`clips/${cid}/export`,'POST')).data.id,exp.data.id);
  assert.equal((await call('worker/claim','POST',undefined,{Authorization:'Bearer test-secret'})).data.job,null,'legacy worker cannot consume a new render');
  assert.equal((await call('worker/claim','POST',undefined,{Authorization:'Bearer test-secret','X-Render-Version':'7'})).data.job,null,'v7 cannot render modern caption jobs');
+ assert.equal((await call('worker/claim','POST',undefined,{Authorization:'Bearer test-secret','X-Render-Version':'8'})).data.job,null,'v8 cannot consume motion exports');
  const exportJob=(await call('worker/claim','POST',undefined,auth)).data.job;
  const exportAuth={...auth,'X-Job-Token':exportJob.token};
  for(const [action,body] of [['output-start',undefined],['output-part/1',{size:1000}],['output-complete',{parts:[{partNumber:1,etag:'part'}]}],['finish',{}]]){
   const r=await call(`worker/jobs/${exportJob.id}/${action}`,'POST',body,exportAuth);assert.equal(r.status,200,JSON.stringify(r));
  }
  assert.equal((await call(`exports/${exportJob.id}`)).status,307);
+
+ // Publishing is owner-scoped and gated by an authenticated local connector.
+ const publication={platform:'youtube',title:'Reviewed export',description:'Source quote',privacy:'private',madeForKids:false,synthetic:false,consent:true};
+ assert.equal((await call(`publishing/${exportJob.id}`,'POST',publication)).status,403);
+ adminIds=owner;
+ assert.equal((await call(`publishing/${exportJob.id}`,'POST',publication)).status,409);
+ assert.equal((await call('worker/publish/accounts','POST',{owner,accounts:[]})).status,401);
+ const accounts={owner,accounts:[{platform:'youtube',id:'channel-test',label:'Test channel'}]};
+ assert.equal((await call('worker/publish/accounts','POST',accounts,auth)).status,200);
+ assert.equal((await call(`publishing/${exportJob.id}`,'POST',{...publication,consent:false})).status,400);
+ assert.equal((await call(`publishing/${exportJob.id}`,'POST',{...publication,platform:'tiktok'})).status,400);
+ assert.equal((await call(`publishing/${exportJob.id}`,'POST',publication)).status,200);
+ assert.equal((await call(`publishing/${exportJob.id}`,'POST',publication)).status,200);
+ assert.equal((await call(`publishing/${exportJob.id}`)).data.jobs.length,1);
+ const publishingClaim=(await call('worker/publish/claim','POST',{owner},auth)).data.job;
+ assert.equal(publishingClaim.account_id,'channel-test');assert.equal(publishingClaim.payload.privacy,'private');
+ assert.equal((await call('worker/publish/claim','POST',{owner},auth)).data.job,null);
+ const pc={id:publishingClaim.id,token:publishingClaim.token};
+ assert.equal((await call('worker/publish/finish','POST',pc,auth)).status,409,'completion requires a remote confirmation');
+ assert.equal((await call('worker/publish/started','POST',{...pc,token:'bad'},auth)).status,409);
+ assert.equal((await call('worker/publish/started','POST',pc,auth)).status,200);
+ await db.prepare('UPDATE publication_jobs SET lease=0 WHERE id=?').bind(pc.id).run();
+ assert.equal((await call(`publishing/${exportJob.id}`)).data.jobs[0].status,'review');
+ assert.equal((await call(`publishing/${exportJob.id}`,'POST',publication)).status,200);
+ assert.equal((await call('worker/publish/claim','POST',{owner},auth)).data.job,null,'uncertain deliveries cannot be automatically sent again');
+ current='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ assert.equal((await call(`publishing/${exportJob.id}`)).status,404);
+ assert.equal((await call(`publishing/${exportJob.id}`,'POST',publication)).status,404);
+ current=owner;
+ // A confirmed remote result is recorded once, and cancellation only applies before claim.
+ await call('worker/publish/accounts','POST',{owner,accounts:[...accounts.accounts,{platform:'instagram',id:'12345',label:'@fixture'}]},auth);
+ const instagram={...publication,platform:'instagram',privacy:'public'};
+ assert.equal((await call(`publishing/${exportJob.id}`,'POST',instagram)).status,200);
+ assert.equal((await call(`publishing/${exportJob.id}`,'DELETE',{platform:'instagram'})).status,200);
+ assert.equal((await call('worker/publish/claim','POST',{owner},auth)).data.job,null);
+ await call(`publishing/${exportJob.id}`,'POST',instagram);
+ const ig=(await call('worker/publish/claim','POST',{owner},auth)).data.job;
+ const igc={id:ig.id,token:ig.token};
+ await call('worker/publish/started','POST',igc,auth);
+ assert.equal((await call('worker/publish/checkpoint','POST',{...igc,remoteId:'67890'},auth)).status,200);
+ assert.equal((await call('worker/publish/finish','POST',igc,auth)).status,200);
+ assert.equal((await call(`publishing/${exportJob.id}`)).data.jobs.find(j=>j.platform==='instagram').status,'complete');
+ await call(`publishing/${exportJob.id}`,'POST',instagram);
+ assert.equal((await call('worker/publish/claim','POST',{owner},auth)).data.job,null);
+ adminIds='';
 
  // An interrupted export must retain its storage reservation until removal is confirmed.
  const failed=await call(`clips/${cid}/export`,'POST');
