@@ -3,3 +3,9 @@ https://github.com/Loopy24z/sound-convert
 Commit: 305d51597cd57eed042894ac59c8f03bbc569d82
 File: libvorbis.js
 Conversion algorithm adapted from index.html. Original embedded notices retained.
+
+MP3 encoder: lamejs (LGPL-3.0), unmodified lame.min.js
+https://github.com/zhuker/lamejs
+Commit: 582bbba6a12f981b984d8fb9e1874499fed85675
+License: LAME-LICENSE.txt
+Corresponding source and build scripts: lame-source.zip (same directory).

@@ -1,4 +1,4 @@
-﻿import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, ListPartsCommand, HeadObjectCommand, ListObjectsV2Command, DeleteObjectsCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, ListPartsCommand, HeadObjectCommand, ListObjectsV2Command, DeleteObjectsCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 let client: S3Client;
 function config() {
@@ -8,6 +8,10 @@ function config() {
   return { client, Bucket: R2_BUCKET };
 }
 export const storage = {
+  async signedPut(Key: string, size: number, contentType: string) {
+    const {client,Bucket}=config();
+    return getSignedUrl(client,new PutObjectCommand({Bucket,Key,ContentLength:size,ContentType:contentType}),{expiresIn:120});
+  },
   async createMultipartUpload(Key: string, options: { httpMetadata: { contentType: string } }) {
     const { client, Bucket } = config();
     const result = await client.send(new CreateMultipartUploadCommand({ Bucket, Key, ContentType: options.httpMetadata.contentType }));

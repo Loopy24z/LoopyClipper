@@ -1,3 +1,4 @@
+import * as audioDomain from '../lib/audio-link.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
@@ -25,6 +26,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  await pg.exec(await readFile(new URL('../supabase/migrations/0003_ugc_drafts.sql',import.meta.url),'utf8'));
  await pg.exec(await readFile(new URL('../supabase/migrations/0004_ugc_plans.sql',import.meta.url),'utf8'));
  await pg.exec(await readFile(new URL('../supabase/migrations/0005_publications.sql',import.meta.url),'utf8'));
+ await pg.exec(await readFile(new URL('../supabase/migrations/0006_audio_imports.sql',import.meta.url),'utf8'));
  const driver=c=>({unsafe:async(sql,values)=>{const r=await c.query(sql,values);return Object.assign(r.rows,{count:r.affectedRows??r.rows.length})},begin:fn=>c.transaction(tx=>fn(driver(tx)))});
  const db=createDatabase(driver(pg));
  const objects=new Map();
@@ -32,6 +34,7 @@ test('cloud API completes upload, transcription, editor and export; enforces own
   createMultipartUpload:async()=>({uploadId:'upload-test'}),
   resumeMultipartUpload:(key)=>({signPart:async(n)=>({url:'https://storage.example/part',partNumber:n}),complete:async()=>objects.set(key,{size:1000}),abort:async()=>{}}),
   head:async key=>objects.get(key)||null,
+  signedPut:async key=>'https://storage.example/'+key,
   signedGet:async key=>'https://storage.example/'+key,
   list:async()=>({objects:[],truncated:false}),delete:async()=>{}
  };
@@ -49,12 +52,33 @@ test('cloud API completes upload, transcription, editor and export; enforces own
  const ugc=await load('../lib/ugc-api.ts',{'./server':server,'./credits':credits,'./ugc-render':ugcRender,'./ugc-domain.mjs':ugcDomain});
  const plans=await load('../lib/ugc-plan-api.ts',{'./server':server,'./credits':credits,'./ugc-plan-domain.mjs':planDomain});
  const publishing=await load('../lib/publishing-api.ts',{'./server':server,'./credits':credits,'./storage':{storage:bucket},'./publishing-domain.mjs':publishingDomain});
- const route=await load('../app/api/[...path]/route.ts',{'@/lib/publishing-api':publishing,'@/lib/ugc-plan-api':plans,'@/lib/ugc-render':ugcRender,'@/lib/ugc-api':ugc,'@/lib/templates-api':templates,'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
+ const audio=await load('../lib/audio-import-api.ts',{'./server':server,'./storage':{storage:bucket},'./audio-link.mjs':audioDomain});
+ const route=await load('../app/api/[...path]/route.ts',{'@/lib/audio-import-api':audio,'@/lib/publishing-api':publishing,'@/lib/ugc-plan-api':plans,'@/lib/ugc-render':ugcRender,'@/lib/ugc-api':ugc,'@/lib/templates-api':templates,'@/lib/server':server,'@/lib/credits':credits,'@/lib/billing-api':billing,'@/lib/domain.mjs':domain,'@/lib/credits-domain.mjs':creditsDomain});
  async function call(path,method='GET',body,headers={}){
   const r=await route[method](new Request('https://app.example/api/'+path,{method,headers:{Origin:'https://app.example',...headers},...(body===undefined?{}:{body:JSON.stringify(body)})}));
   return {status:r.status,data:r.status===307?r.headers.get('location'):await r.json()};
  }
 
+
+ // Audio imports are owner scoped and cancelled claims cannot publish results.
+ await call('account');
+ assert.equal((await call('audio-imports','POST',{url:'https://youtu.be/test',rights:false})).status,400);
+ const audioJob=await call('audio-imports','POST',{url:'https://youtu.be/test',rights:true});assert.equal(audioJob.status,200);
+ assert.equal((await call('audio-imports','POST',{url:'https://youtu.be/test',rights:true})).data.id,audioJob.data.id);
+ assert.equal((await call('audio-imports','POST',{url:'https://youtu.be/another',rights:true})).status,409);
+ const claimed=await call('worker/audio-import/claim','POST',{}, {authorization:'Bearer test-secret'});assert.equal(claimed.data.job.id,audioJob.data.id);
+ const claim={id:audioJob.data.id,token:claimed.data.job.token};
+ assert.equal((await call('worker/audio-import/upload','POST',{...claim,size:26*1024**2},{authorization:'Bearer test-secret'})).status,400);
+ objects.set(`audio-imports/${claim.id}.mp3`,{size:1000});
+ assert.equal((await call('worker/audio-import/finish','POST',{...claim,name:'Test audio'},{authorization:'Bearer test-secret'})).status,200);
+ assert.equal((await call('audio-imports/'+claim.id,'POST',{action:'load'})).status,200);
+ current='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ assert.equal((await call('audio-imports/'+claim.id,'POST',{action:'load'})).status,404);
+ assert.equal((await call('audio-imports/'+claim.id,'DELETE')).status,404);current=owner;
+ const cancelJob=await call('audio-imports','POST',{url:'https://youtu.be/cancel',rights:true});
+ const cancelClaim=await call('worker/audio-import/claim','POST',{}, {authorization:'Bearer test-secret'});
+ assert.equal((await call('audio-imports/'+cancelJob.data.id,'DELETE')).status,200);
+ assert.equal((await call('worker/audio-import/upload','POST',{id:cancelJob.data.id,token:cancelClaim.data.job.token,size:1000},{authorization:'Bearer test-secret'})).status,409);
  const brief={scenes:[{title:'Hook',visual:'Close-up',narration:'Look at this.',seconds:3}],title:'Product launch',product:'Coffee',script:'Discover the details.',mode:'product',language:'id',style:'natural',ratio:'9:16',duration:10,rights:false,image:''};
  const draft=await call('ugc','POST',brief);assert.equal(draft.status,200,JSON.stringify(draft));
  assert.equal((await call('ugc')).data.generationEnabled,false);

@@ -412,6 +412,12 @@ def main():
     publisher = Publisher(client)
     while True:
         try:
+            from audio_import import process_audio_import
+            audio=client.json('audio-import/claim',{})
+            if audio.get('job'):
+                process_audio_import(client,audio['job'])
+                if args.once:return
+                continue
             from ugc_planner import process_plan
             planned=client.json('ugc-plan/claim',{})
             if planned.get('job'):

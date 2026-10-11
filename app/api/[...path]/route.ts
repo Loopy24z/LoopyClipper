@@ -1,3 +1,4 @@
+import {audioImports,audioImportWorker} from '@/lib/audio-import-api';
 import {publishingApi,publishWorker} from '@/lib/publishing-api';
 import {creativePlan,planWorker} from '@/lib/ugc-plan-api';
 import {account,chargeStatement,refund} from '@/lib/credits';
@@ -44,6 +45,7 @@ async function handler(r: Request) {
         const u = await user(r);
         const owner = u.userId;
         const wallet = await account(owner,u.email);
+        if(route==='audio-imports')return json(await audioImports(owner,method,pid,method==='POST'?await body(r):{}));
         if(route==='publishing'&&pid)return json(await publishingApi(owner,pid,method,['POST','DELETE'].includes(method)?await body(r):{}));
         if(route==='ugc'&&pid&&action==='plan')return json(await creativePlan(owner,pid,method,method==='POST'?await body(r):{}));
         if(route==='ugc'&&pid==='renders'&&method==='GET')return json({renderEnabled:wallet.admin,renders:await ugcRenders(owner)});
@@ -53,6 +55,8 @@ async function handler(r: Request) {
         if(route === "billing" || route === "admin") return json(await billingApi(route,pid,method,owner,method === "POST" ? await body(r) : {}));
         if (route === 'account') {
             if (method === 'DELETE') {
+                const audio=await db().prepare("SELECT id FROM audio_imports WHERE owner=?").bind(owner).all<any>();
+                for(const row of audio.results)await audioImports(owner,'DELETE',row.id,{});
                 await db().prepare('DELETE FROM publication_jobs WHERE owner=?').bind(owner).run();
                 await db().prepare('DELETE FROM publishing_accounts WHERE owner=?').bind(owner).run();
                 await db().prepare('DELETE FROM clip_templates WHERE owner=?').bind(owner).run();
@@ -278,6 +282,7 @@ async function worker(r: Request, [action, jid, sub, partNumber]: string[]) {
     const secret = bindings().PROCESSOR_TOKEN;
     if (!secret || r.headers.get('authorization') !== `Bearer ${secret}`)
         throw new HttpError(401, 'Unauthorized.');
+    if(action==='audio-import'&&r.method==='POST')return json(await audioImportWorker(jid,await body(r)));
     if(action==='publish'&&r.method==='POST')return json(await publishWorker(jid,await body(r)));
     if(action==='ugc-plan'&&r.method==='POST')return json(await planWorker(jid,await body(r)));
     if (action === 'claim' && r.method === 'POST') {
