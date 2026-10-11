@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useRef,useState} from 'react';
 import {AudioLines,Upload,Download,Trash2,ShieldCheck,ArrowLeft,LoaderCircle,SlidersHorizontal} from 'lucide-react';
-import {audioDefaults,audioSettings,audioOutputName,outputSamples} from '@/lib/audio-settings.mjs';
+import {audioDefaults,audioSettings,audioOutputName} from '@/lib/audio-settings.mjs';
 import {audioHistory,storeAudio,deleteAudio,type AudioResult} from '@/lib/audio-history';
 import LinkImport from './link-import';
 type Entry={id:string;file:File;status:string;error?:string};
@@ -23,15 +23,15 @@ export default function AudioStudio({owner}:{owner:string}){
     if(run!==generation.current)break;
     const count=Math.min(decoded.length,Math.round(config.maxDuration*decoded.sampleRate)),channels=Math.min(2,decoded.numberOfChannels);
     if(!count||channels<1)throw Error('No audio samples found.');
-    if((count+outputSamples(count,config.speed))*channels*4>128*1024**2)throw Error('This selection is too large for browser processing. Reduce the source duration limit or increase speed.');
-    const pcm=Array.from({length:channels},(_,c)=>decoded.getChannelData(c).slice(0,count));
+    // The decoder owns one source buffer; the worker pulls bounded sample blocks.
+    // Compressed outputs do not allocate a full-length PCM output buffer.
     status('Encoding');setStage(`${i+1}/${entries.length} - Creating ${config.format.toUpperCase()}`);
     const encoded=await new Promise<{blob:Blob;clipped:number;duration:number}>((resolve,reject)=>{
      const w=new Worker('/audio/convert-worker.js');worker.current=w;cancelEncode.current=()=>reject(Error('Cancelled'));
      const finish=()=>{w.terminate();if(worker.current===w)worker.current=null;cancelEncode.current=null};
-     w.onmessage=e=>{if(e.data.error){finish();reject(Error(e.data.error))}else if(e.data.blob){finish();resolve(e.data)}else setProgress(Math.round((i+Math.min(100,e.data.progress)/100)/entries.length*100))};
+     w.onmessage=e=>{if(e.data.need){const {start,end}=e.data.need;const pcm=Array.from({length:channels},(_,c)=>decoded.getChannelData(c).slice(start,end));w.postMessage({type:'samples',channels:pcm},pcm.map(c=>c.buffer));return;}if(e.data.error){finish();reject(Error(e.data.error))}else if(e.data.blob){finish();resolve(e.data)}else setProgress(Math.round((i+Math.min(100,e.data.progress)/100)/entries.length*100))};
      w.onerror=()=>{finish();reject(Error('The audio encoder could not load. Refresh and retry.'))};
-     w.postMessage({channels:pcm,sampleRate:decoded.sampleRate,speed:config.speed,gain:config.gain,format:config.format,bitrate:config.bitrate},pcm.map(c=>c.buffer));
+     w.postMessage({type:'start',channelCount:channels,frames:count,sampleRate:decoded.sampleRate,speed:config.speed,gain:config.gain,format:config.format,bitrate:config.bitrate});
     });
     if(run!==generation.current)break;
     const result:AudioResult={...encoded,...config,id:crypto.randomUUID(),owner,name:audioOutputName(entry.file.name,config.format),created:Date.now()};

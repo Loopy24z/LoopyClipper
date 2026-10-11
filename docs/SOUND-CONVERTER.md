@@ -15,7 +15,7 @@ Adapted from https://github.com/Loopy24z/sound-convert. Encoder provenance is in
 - Up to 10 inputs per batch, 25 MB per file. Decoding depends on browser codec support.
 - Encoding runs in a Web Worker. Cancel stops the encoder; already completed outputs remain.
 - Positive gain is clipped safely and a warning appears when peaks exceed full scale.
-- The decoded selection and estimated output have a 128 MiB processing budget. Very long compressed files can still require substantial memory during browser decoding.
+- The encoder pulls bounded source blocks (at most about 512 KiB at 4x stereo). It does not copy the entire source or allocate a full PCM output. Browser decoding still holds one decoded source; long compressed files can require substantial memory. WAV output remains larger than MP3/OGG.
 
 ## Local history
 
@@ -38,3 +38,5 @@ Apply `0006_audio_imports.sql` and restart the local processor after deploying. 
 MP3 encoder: unmodified lamejs (LGPL-3.0). License and corresponding source/build scripts are shipped under `/audio/LAME-LICENSE.txt` and `/audio/lame-source.zip`. Provenance is in `/audio/SOURCE.txt`.
 
 Additional verification: real MP3 output inspected by ffprobe at 192000 bps and WAV output at 1411200 bps. Integration tests cover ownership, idempotency, cancelled leases and size bounds. External platform success must be checked with an authorized public URL; no guarantee is made for private, restricted, or login-only content.
+
+Long-audio regression: a 350-second stereo MP3 (~5.6 MB) converted at 1x to MP3, OGG and WAV in Chrome. The previous 128 MiB estimate incorrectly rejected this case by counting a full PCM output. The worker now pulls bounded blocks; a regression test verifies WAV duration and channel samples across block boundaries.
