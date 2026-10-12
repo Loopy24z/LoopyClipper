@@ -29,6 +29,7 @@ export default function Editor({ id, configured, onBack, section, onSection, bac
         number,
         number
     ] | null>(null), [transcriptEdit, setTranscriptEdit] = useState(false), [wordEdits, setWordEdits] = useState<string[]>([]);
+    const [actionError,setActionError]=useState('');
     const hookStop = useRef<number|null>(null);
     const video = useRef<HTMLVideoElement>(null), saveQueue = useRef(Promise.resolve()), dirty = useRef(false), current = useRef<Clip | null>(null), selectedWord = useRef<number | null>(null), saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(()=>{
@@ -64,12 +65,13 @@ export default function Editor({ id, configured, onBack, section, onSection, bac
     async function save(c: Clip) { setSaveState('Saving…'); const snapshot = JSON.stringify(c.data); const operation = saveQueue.current.catch(() => { }).then(async () => { await api('clips/' + c.id, { method: 'PUT', body: snapshot });
         setP(old=>old?{...old,clips:old.clips.map(item=>item.id===c.id?{...item,data:JSON.parse(snapshot),suggested:0}:item)}:old); if (current.current?.id === c.id && JSON.stringify(current.current.data) === snapshot) {
         dirty.current = false;
-        setSaveState('Saved');
+        setSaveState('Saved');setActionError('');
     } }); saveQueue.current = operation; try {
         await operation;
     }
     catch (e) {
         setSaveState('Save failed — retry');
+        setActionError((e as Error).message);
         throw e;
     } }
     function edit(change: Partial<ClipData>) { if (!current.current)
@@ -110,14 +112,15 @@ export default function Editor({ id, configured, onBack, section, onSection, bac
         setBusy(false);
     } }
     async function exportClip() { if (!active)
-        return; setBusy(true); try {
+        return; setBusy(true);setActionError(''); try {
         await flush();
         await api(`clips/${active.id}/export`, { method: 'POST' });
         await load();
-        toast.success('Export queued. You can keep editing.');
+        toast.success('Render queued. Download MP4 will appear above the preview when ready.');
+        document.getElementById('clip-output')?.scrollIntoView({behavior:'smooth',block:'start'});
     }
     catch (e) {
-        toast.error((e as Error).message);
+        setActionError((e as Error).message);toast.error((e as Error).message);
     }
     finally {
         setBusy(false);
@@ -148,6 +151,9 @@ export default function Editor({ id, configured, onBack, section, onSection, bac
     if (!p)
         return <main><button className="text-button" onClick={onBack}><ArrowLeft size={16}/> All projects</button><div className="empty-projects">{error || 'Opening your project…'}{error && <button className="subtle-button" onClick={load}>Retry</button>}</div></main>;
     const data = active?.data, ready = ['ready', 'no_speech'].includes(p.status), jobs = p.jobs.filter(j => j.clip === active?.id && j.kind === 'export');
+    const latestOutput=[...jobs].sort((a,b)=>new Date(b.created).getTime()-new Date(a.created).getTime())[0];
+    const completedOutput=[...jobs].filter(j=>j.status==='complete').sort((a,b)=>new Date(b.created).getTime()-new Date(a.created).getTime())[0];
+    const rendering=jobs.some(j=>['queued','running'].includes(j.status));
     const group = data ? captionGroup(p.transcript,data,time) : [];
     const caption = data?.captionText || group.map((w: {text:string})=>w.text).join(' ');
     const clipLength = data ? editedDuration(data) : p.duration;
@@ -158,7 +164,7 @@ export default function Editor({ id, configured, onBack, section, onSection, bac
     }
     catch (e) {
         toast.error((e as Error).message);
-    } }}><ArrowLeft size={15}/> All projects</button><h1>{p.name.replace(/\.(mp4|mov)$/i, '')}</h1><div className="inline muted"><span>{timestamp(p.duration)} · {p.language === 'id' ? 'Indonesian' : p.language === 'en' ? 'English' : 'Auto language'}</span>{p.youtube && <a href={p.youtube} target="_blank" rel="noreferrer" className="inline">YouTube source <ExternalLink size={12}/></a>}</div></div><div className="inline"><button className="save-indicator" onClick={() => active && save(active).catch(e => toast.error(e.message))}><Check size={14}/>{saveState}</button><button className="primary" disabled={!active || busy} onClick={exportClip}><Download size={16}/> Export clip</button></div></div>{error && <div className="notice error" role="alert">{error}</div>}{!ready && <div className="processing-card"><div className="empty-icon">{p.status === 'failed' ? <RefreshCw /> : <LoaderCircle className="spin"/>}</div><h2>{p.status === 'failed' ? 'Your video needs another try' : p.status === 'uploading' ? 'Your upload is incomplete' : p.status === 'queued' ? 'Your video is in the queue' : p.status === 'downloading' ? 'Downloading your YouTube video' : p.status === 'transcribing' ? 'Turning speech into text' : 'Finding your best moments'}</h2><p>{p.error || (p.status === 'uploading' ? 'Return to your projects and choose the same file to resume.' : !configured ? 'Your upload is saved. Video processing is waiting for the workspace’s processing service to come online.' : 'You can leave this page. Your video will keep processing in the background.')}</p><div className="process-steps">{['Uploaded', 'Transcribing', 'Highlights', 'Ready'].map((s, i) => <span key={s} className={i === 0 ? 'done' : ''}>{i === 0 ? <Check size={15}/> : i + 1} {s}</span>)}</div>{p.status === 'failed' && <button className="primary" onClick={() => api(`projects/${id}/retry`, { method: 'POST' }).then(load).catch(e => toast.error(e.message))}><RefreshCw size={16}/> Retry processing</button>}</div>}<><div className="editor-grid"><section className="preview-panel"><div className="panel-title"><span>Clip preview</span><span>{data?.ratio || 'Original'}</span></div><div className="video-stage"><div className="video-frame" style={{ aspectRatio: data?.ratio.replace(':', '/') || '16/9', maxHeight: 420 }}><video key={`${id}:${ready ? "ready" : "pending"}`} ref={video} src={ready ? `/api/projects/${id}/source` : undefined} style={{ objectFit: (data?.fit || 'contain') as 'contain' | 'cover', objectPosition: `${data?.position ?? 50}% 50%`, transform: `scale(${motionScale(data?.motion,playTime,data?.motionAmount)})`, transformOrigin: `${data?.position??50}% 50%` }} playsInline onTimeUpdate={e => { const v=e.currentTarget; setTime(v.currentTime); if(data && !v.paused){const next=segmentsFor(data).find((s:{start:number;end:number})=>v.currentTime<s.end); if(!next){v.pause();setPlaying(false);}else if(v.currentTime<next.start){v.currentTime=next.start;setTime(next.start);}} }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onLoadedMetadata={() => { if (video.current && data)
+    } }}><ArrowLeft size={15}/> All projects</button><h1>{p.name.replace(/\.(mp4|mov)$/i, '')}</h1><div className="inline muted"><span>{timestamp(p.duration)} · {p.language === 'id' ? 'Indonesian' : p.language === 'en' ? 'English' : 'Auto language'}</span>{p.youtube && <a href={p.youtube} target="_blank" rel="noreferrer" className="inline">YouTube source <ExternalLink size={12}/></a>}</div></div><div className="inline"><button className="save-indicator" onClick={() => active && save(active).catch(e => toast.error(e.message))}><Check size={14}/>{saveState}</button><button className="primary" disabled={!active || busy || rendering} onClick={exportClip}><Download size={16}/> Render MP4</button></div></div>{actionError&&<div className="notice error" role="alert">{actionError} Your edits remain in this editor. Retry saving or rendering.</div>}{active&&<section id="clip-output" className="clip-output" aria-label="Save, download and publish"><div className="output-heading"><div><span className="eyebrow">SAVE & SHARE</span><h2>Your finished clip</h2><p>Saving keeps your edits. Render creates an MP4 you can download and upload.</p></div><button className="subtle-button" disabled={busy} onClick={()=>flush().catch(e=>setActionError(e.message))}><Check size={15}/> Save edits</button></div><div aria-live="polite">{rendering?<p>{configured?'Rendering your clip. Download becomes available when processing finishes.':'Waiting for the local processor. Keep the processor running and your computer awake.'}</p>:latestOutput?.status==='failed'?<p className="error">{latestOutput.error||'Render failed. Your edits are saved; click Render MP4 to retry.'}</p>:!completedOutput?<p>Choose Render MP4 above to create your first downloadable video.</p>:null}{latestOutput?.status==='running'&&<Progress value={latestOutput.progress}/>}</div>{completedOutput&&<><a className="primary" href={'/api/exports/'+completedOutput.id} download><Download size={16}/> Download MP4</a><p className="muted">Last completed render: {new Date(completedOutput.created).toLocaleString()}. Render again to include newer edits.</p><PublishPanel key={completedOutput.id} exportId={completedOutput.id} defaultOpen/></>}{!completedOutput&&<p className="muted">After rendering, choose YouTube, TikTok, Facebook or Instagram here.</p>}</section>}{error && <div className="notice error" role="alert">{error}</div>}{!ready && <div className="processing-card"><div className="empty-icon">{p.status === 'failed' ? <RefreshCw /> : <LoaderCircle className="spin"/>}</div><h2>{p.status === 'failed' ? 'Your video needs another try' : p.status === 'uploading' ? 'Your upload is incomplete' : p.status === 'queued' ? 'Your video is in the queue' : p.status === 'downloading' ? 'Downloading your YouTube video' : p.status === 'transcribing' ? 'Turning speech into text' : 'Finding your best moments'}</h2><p>{p.error || (p.status === 'uploading' ? 'Return to your projects and choose the same file to resume.' : !configured ? 'Your upload is saved. Video processing is waiting for the workspace’s processing service to come online.' : 'You can leave this page. Your video will keep processing in the background.')}</p><div className="process-steps">{['Uploaded', 'Transcribing', 'Highlights', 'Ready'].map((s, i) => <span key={s} className={i === 0 ? 'done' : ''}>{i === 0 ? <Check size={15}/> : i + 1} {s}</span>)}</div>{p.status === 'failed' && <button className="primary" onClick={() => api(`projects/${id}/retry`, { method: 'POST' }).then(load).catch(e => toast.error(e.message))}><RefreshCw size={16}/> Retry processing</button>}</div>}<><div className="editor-grid"><section className="preview-panel"><div className="panel-title"><span>Clip preview</span><span>{data?.ratio || 'Original'}</span></div><div className="video-stage"><div className="video-frame" style={{ aspectRatio: data?.ratio.replace(':', '/') || '16/9', maxHeight: 420 }}><video key={`${id}:${ready ? "ready" : "pending"}`} ref={video} src={ready ? `/api/projects/${id}/source` : undefined} style={{ objectFit: (data?.fit || 'contain') as 'contain' | 'cover', objectPosition: `${data?.position ?? 50}% 50%`, transform: `scale(${motionScale(data?.motion,playTime,data?.motionAmount)})`, transformOrigin: `${data?.position??50}% 50%` }} playsInline onTimeUpdate={e => { const v=e.currentTarget; setTime(v.currentTime); if(data && !v.paused){const next=segmentsFor(data).find((s:{start:number;end:number})=>v.currentTime<s.end); if(!next){v.pause();setPlaying(false);}else if(v.currentTime<next.start){v.currentTime=next.start;setTime(next.start);}} }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onLoadedMetadata={() => { if (video.current && data)
         video.current.currentTime = segmentsFor(data)[0].start; }}/>{data?.captions && caption && <CaptionOverlay data={data} group={group} time={time} caption={caption}/>}{data?.headlineEnabled&&data.headline&&playTime<(data.headlineDuration??3)&&time>=segmentsFor(data)[0].start&&<div className="headline-preview" style={{fontSize:`${56/(data.ratio==='16:9'?1920:1080)*100}cqw`}}>{data.headline}</div>}</div></div><div className="playback"><button className="play-button" aria-label={playing ? 'Pause' : 'Play clip'} onClick={() => { hookStop.current=null; const v = video.current; if (!v)
         return; if (playing)
         v.pause();
