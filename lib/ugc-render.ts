@@ -15,7 +15,7 @@ export async function ugcRender(owner:string,draftId:string,body:any){
  if(!data.scenes?.length&&data.script.length>350)throw new HttpError(400,'Split this script into storyboard scenes before rendering.');
  if(!data.scenes?.length) data.scenes=[{title:'Product story',visual:'',narration:data.script.slice(0,350),seconds:data.duration}];
  const duration=data.scenes.reduce((sum:number,s:any)=>sum+s.seconds,0);
- const snapshot={...data,...audio};const key='ugc-'+createHash('sha256').update(JSON.stringify([owner,draftId,snapshot])).digest('hex');
+ const snapshot={...data,...audio};const key='ugc-'+createHash('sha256').update(JSON.stringify([8,owner,draftId,snapshot])).digest('hex');
  const prior=await db().prepare('SELECT id,status FROM jobs WHERE id=?').bind(key).first<any>();
  if(prior&&prior.status!=='failed')return {projectId:key,status:prior.status};
  const active=await db().prepare("SELECT j.id FROM jobs j JOIN projects p ON p.id=j.project WHERE p.owner=? AND j.payload::jsonb->'ugc' IS NOT NULL AND j.status IN ('queued','running')").bind(owner).first();
@@ -25,7 +25,7 @@ export async function ugcRender(owner:string,draftId:string,body:any){
  const usage=await db().prepare("SELECT (SELECT COALESCE(SUM(size),0) FROM projects WHERE owner=?)+(SELECT COALESCE(SUM(j.size),0) FROM jobs j JOIN projects p ON p.id=j.project WHERE p.owner=? AND j.kind='export') AS bytes").bind(owner,owner).first<any>();
  if(Number(usage.bytes)+134217728>10737418240)throw new HttpError(409,'Free some project storage before rendering.');
  await db().prepare("INSERT INTO projects(id,owner,name,size,duration,language,status,created) VALUES(?,?,?,134217728,?,?,'queued',?)").bind(key,owner,data.title,duration,data.language,Date.now()).run();
- await db().prepare("INSERT INTO jobs(id,project,kind,payload,created) VALUES(?,?,'transcribe',?,?)").bind(key,key,JSON.stringify({renderVersion:7,ugc:snapshot,ugcDraftId:draftId}),Date.now()).run();
+ await db().prepare("INSERT INTO jobs(id,project,kind,payload,created) VALUES(?,?,'transcribe',?,?)").bind(key,key,JSON.stringify({renderVersion:8,ugc:snapshot,ugcDraftId:draftId}),Date.now()).run();
  }
  return {projectId:key,status:'queued'};
  });

@@ -1,0 +1,11 @@
+# Simple product UGC
+
+The product editor is one page. Photo, permission and short script are visible; format, AI concept, detailed styling, individual scenes and optional audio are disclosures. Product name supplies the initial campaign title. New drafts default to vertical Indonesian video with highlighted captions and calm music.
+
+Create video saves the current draft before submitting a render. A failed save prevents submission. With a script and no storyboard, the existing showcase recipe builds scenes automatically. Changing the main script clears stale scenes. Existing edited scenes are preserved until the script changes or a recipe replaces them. Audio selections stay through the first save and reset when another draft is opened.
+
+The local renderer transcribes an uploaded voiceover using the installed faster-whisper model. Captions use recognized speech, not forced alignment to the typed script. Scene cuts are placed between recognized words, distributed by the relative narration length of each scene; this is a pacing heuristic, not semantic shot selection. Total video duration follows the recording, including pauses, up to 60 seconds. Silent recordings fail with a retryable explanation. Without voiceover, the existing estimated scene/caption timing is retained.
+
+The browser storyboard remains an estimated visual preview. Review the rendered video for speech recognition, wording and final timing. Presenter generation and speech synthesis are not enabled by this change. The Windows processor must run with the existing Python environment and Whisper cache.
+
+Validation: TypeScript and Next build; 6 editing/planning/presenter tests; 4 voice timeline tests; browser fixture checks at 320, 390, 768 and 1440 pixels including failed-save protection; local H.264/AAC exports at all three ratios with audible music; English speech fixture rendered at its full 15.17-second duration. Indonesian speech alignment still needs a curated recording for quality review. Browser checks use mocked APIs and do not prove production authentication or job execution.

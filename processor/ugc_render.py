@@ -28,6 +28,20 @@ def render_product(data, output, progress=None):
     if not 1<=len(scenes)<=8 or any(not isinstance(s.get('seconds'),int) or not 1<=s['seconds']<=15 for s in scenes):raise ValueError('Use one to eight scenes, each 1 to 15 seconds.')
     total=sum(s['seconds'] for s in scenes)
     if total>60:raise ValueError('Keep the video within 60 seconds.')
+    voice_groups = None
+    if data.get('voice'):
+        from ugc_timing import transcribe_voice, voice_timeline
+        voice_path = folder/'voice.mp3'
+        if len(data['voice']) > 1400000:
+            raise ValueError('Voiceover exceeds the size limit.')
+        voice_path.write_bytes(base64.b64decode(data['voice'].split(',',1)[1], validate=True))
+        metadata = json.loads(subprocess.check_output([os.getenv('FFPROBE','ffprobe'), '-v','error','-protocol_whitelist','file,pipe','-show_format','-of','json',str(voice_path)]))
+        duration = float(metadata['format']['duration'])
+        if not 0 < duration <= 60:
+            raise ValueError('Use a voice recording up to 60 seconds. Shorten your recording and retry.')
+        if progress: progress(5)
+        scenes, voice_groups = voice_timeline(scenes, transcribe_voice(voice_path, data.get('language')), duration)
+        total = duration
     width,height=dimensions(data['ratio']);fps=24;words=[];scene_words=[];offset=0;display_events=[]
     layouts=json.loads((pathlib.Path(__file__).resolve().parents[1]/'lib'/'ugc-layouts.json').read_text(encoding='utf-8-sig'))
     palette={'violet':('0x151126','0xa78bfa'),'cyan':('0x071d28','0x22d3ee'),'amber':('0x251a0b','0xfbbf24')}.get(data.get('palette','violet'))
@@ -36,13 +50,14 @@ def render_product(data, output, progress=None):
         ticks=round(t*100);return f'{ticks//360000}:{ticks//6000%60:02}:{ticks//100%60:02}.{ticks%100:02}'
 
     for index,scene in enumerate(scenes):
-        seconds=scene['seconds'];frames=seconds*fps
+        seconds=scene['seconds'];frames=max(1,round((offset+seconds)*fps)-round(offset*fps))
         # Fit the entire product over a blurred background; alternating gentle push/pull.
         motion=scene.get('motion','auto')
         if motion not in ('auto','still','push','pull') or scene.get('transition','fade') not in ('fade','cut'):raise ValueError('Unsupported scene effect.')
         strength=.12 if scene.get('intensity')=='dynamic' else .035
         zoom='1' if motion=='still' else f'1+{strength}*on/{frames}' if motion=='push' or motion=='auto' and index%2==0 else f'{1+strength}-{strength}*on/{frames}'
-        fade=f'fade=t=in:st=0:d=0.15,fade=t=out:st={seconds-0.15}:d=0.15,' if scene.get('transition','fade')=='fade' else ''
+        fade_length=min(.15,seconds/2)
+        fade=f'fade=t=in:st=0:d={fade_length},fade=t=out:st={seconds-fade_length}:d={fade_length},' if scene.get('transition','fade')=='fade' else ''
         framing=scene.get('framing','fit')
         if framing not in ('fit','cover') or scene.get('intensity','gentle') not in ('gentle','dynamic'):raise ValueError('Unsupported framing.')
         foreground=f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}' if framing=='cover' else f'scale={width}:{height}:force_original_aspect_ratio=decrease'
@@ -66,6 +81,7 @@ def render_product(data, output, progress=None):
         if progress:progress(int((index+1)/len(scenes)*75))
     (folder/'scenes.txt').write_text(''.join(f"file 'scene-{i}.mp4'\n" for i in range(len(scenes))),encoding='utf8')
     run(['-f','concat','-safe','1','-i','scenes.txt','-c','copy','joined.mp4'],folder)
+    if voice_groups is not None: scene_words=voice_groups
     clip={'start':0,'end':total,'ratio':data['ratio'],'captions':data.get('captionStyle')!='none','fontSize':data.get('captionSize',44),'font':'sans','color':'#ffffff','background':'#000000','textEffect':data.get('captionStyle','outline'),'captionPosition':data.get('captionPosition','bottom'),'wordsPerCaption':5,'captionPhrases':False,'headlineEnabled':False}
     captions=ass_subtitles([],clip)+''.join(line+'\n' for group in scene_words for line in ass_subtitles(group,clip).splitlines() if line.startswith('Dialogue:'))
     (folder/'captions.ass').write_text(captions+'\n'.join(display_events)+'\n',encoding='utf8')
