@@ -24,3 +24,19 @@
 @media(max-width:800px){.ugc-product-flow{grid-template-columns:minmax(0,1fr);gap:16px}.ugc-product-flow .ugc-input-row{grid-template-columns:1fr}.ugc-product-flow .ugc-control-body{padding:18px}.ugc-product-flow .ugc-save{min-height:48px;width:100%}}
 
 .ugc-product-flow .ugc-guided-page>.ugc-script{margin-top:0}
+
+/* Minimal composer: photo + description + primary action. */
+.ugc-other-modes{margin:0 0 18px;color:#a8b1c8;font-size:12px}
+.ugc-other-modes summary{cursor:pointer;padding:8px 0}
+.ugc-other-modes .ugc-mode-toggle{margin-top:12px}
+.ugc-product-flow>.ugc-all-settings{grid-column:1/-1}
+.ugc-all-settings>label{display:block;padding:16px}
+.ugc-product-flow .ugc-upload{min-height:150px}
+.ugc-product-flow .ugc-control-body{padding:18px}
+.ugc-product-flow .ugc-script textarea{min-height:130px}
+.ugc-product-flow .ugc-audio-options{margin-top:20px}
+.ugc-product-flow #product-render{border:0;background:transparent}
+.ugc-product-flow #product-render>.ugc-storyboard-body{padding:0}
+.ugc-product-flow #product-render>.ugc-storyboard-body>.ugc-save{min-height:48px;min-width:220px}
+.ugc-all-settings[open]{padding:18px}
+.ugc-all-settings .ugc-advanced{margin:18px 0}
