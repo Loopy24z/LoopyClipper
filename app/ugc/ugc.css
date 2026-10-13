@@ -22,3 +22,5 @@
 .ugc-product-flow button:focus-visible,.ugc-product-flow summary:focus-visible{outline:2px solid #c4b5fd;outline-offset:4px}
 .ugc-product-flow audio{max-width:100%}
 @media(max-width:800px){.ugc-product-flow{grid-template-columns:minmax(0,1fr);gap:16px}.ugc-product-flow .ugc-input-row{grid-template-columns:1fr}.ugc-product-flow .ugc-control-body{padding:18px}.ugc-product-flow .ugc-save{min-height:48px;width:100%}}
+
+.ugc-product-flow .ugc-guided-page>.ugc-script{margin-top:0}
