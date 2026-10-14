@@ -410,35 +410,43 @@ def main():
     client = Client(url, token)
     from publishing import Publisher
     publisher = Publisher(client)
-    while True:
-        try:
-            from audio_import import process_audio_import
-            audio=client.json('audio-import/claim',{})
-            if audio.get('job'):
-                process_audio_import(client,audio['job'])
-                if args.once:return
-                continue
-            from ugc_planner import process_plan
-            planned=client.json('ugc-plan/claim',{})
-            if planned.get('job'):
-                process_plan(client,planned['job'])
-                if args.once:return
-                continue
-            result = client.json('claim')
-            if result['job']:
-                process(client, result['job'])
-            elif publisher.once():
-                pass
-            elif args.once:
-                return
-            else:
-                time.sleep(30)
-        except (urllib.error.URLError, TimeoutError):
+    # Network/audio work must not wait for transcription, UGC planning or exports.
+    audio_stop = threading.Event()
+    if not args.once:
+        from audio_import import poll_imports
+        threading.Thread(target=poll_imports, args=(Client(url, token), audio_stop), daemon=True, name='audio-imports').start()
+    try:
+        while True:
+            try:
+                if args.once:
+                    from audio_import import process_audio_import
+                    audio=client.json('audio-import/claim',{})
+                    if audio.get('job'):
+                        process_audio_import(client,audio['job'])
+                        return
+                from ugc_planner import process_plan
+                planned=client.json('ugc-plan/claim',{})
+                if planned.get('job'):
+                    process_plan(client,planned['job'])
+                    if args.once:return
+                    continue
+                result = client.json('claim')
+                if result['job']:
+                    process(client, result['job'])
+                elif publisher.once():
+                    pass
+                elif args.once:
+                    return
+                else:
+                    time.sleep(30)
+            except (urllib.error.URLError, TimeoutError):
+                if args.once:
+                    raise
+                time.sleep(10)
             if args.once:
-                raise
-            time.sleep(10)
-        if args.once:
-            return
+                return
+    finally:
+        audio_stop.set()
 
 if __name__ == '__main__':
     main()

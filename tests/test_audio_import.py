@@ -4,6 +4,34 @@ spec=importlib.util.spec_from_file_location('audio_import',pathlib.Path(__file__
 audio=importlib.util.module_from_spec(spec);spec.loader.exec_module(audio)
 
 class AudioImportTests(unittest.TestCase):
+ def test_poll_recovers_and_drains_jobs_without_idle_delay(self):
+  class Stop:
+   def __init__(self):self.stopped=False;self.waits=[]
+   def is_set(self):return self.stopped
+   def wait(self,seconds):self.waits.append(seconds);return False
+  class Client:
+   def __init__(self):self.count=0
+   def json(self,*args):
+    self.count+=1
+    if self.count==1:raise TimeoutError()
+    return {'job':{'id':str(self.count)}}
+  stop=Stop();completed=[]
+  def process(client,job):
+   completed.append(job['id'])
+   if len(completed)==2:stop.stopped=True
+  with patch.object(audio,'process_audio_import',process):audio.poll_imports(Client(),stop)
+  self.assertEqual(completed,['2','3'])
+  self.assertEqual(stop.waits,[5])
+
+ def test_idle_poll_can_be_stopped_without_another_request(self):
+  class Stop:
+   def is_set(self):return False
+   def wait(self,seconds):return True
+  from unittest.mock import Mock
+  client=Mock();client.json.return_value={'job':None}
+  audio.poll_imports(client,Stop())
+  self.assertEqual(client.json.call_count,1)
+
  def test_download_rejects_non_platform_before_network(self):
   with self.assertRaises(ValueError):audio.download('https://localhost/private',pathlib.Path('.'))
  def test_worker_encodes_then_uploads_and_finishes(self):

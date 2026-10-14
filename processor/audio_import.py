@@ -2,6 +2,21 @@
 import json, pathlib, subprocess, sys, tempfile, time, urllib.request, urllib.error
 
 
+def poll_imports(client, stop, interval=5):
+    """One dedicated audio lane; never share the video client's job token."""
+    while not stop.is_set():
+        try:
+            job = client.json('audio-import/claim', {}).get('job')
+            if job:
+                process_audio_import(client, job)
+                continue
+        except Exception as exc:
+            # Keep credentials, source URLs and download responses out of logs.
+            print(f'Audio queue temporarily unavailable ({type(exc).__name__}).', flush=True)
+        if stop.wait(interval):
+            return
+
+
 def download(url, folder):
     from yt_dlp import YoutubeDL
     from urllib.parse import urlsplit
@@ -66,6 +81,7 @@ def process_audio_import(client, job):
             with urllib.request.urlopen(request,timeout=90) as response:
                 if response.status not in (200,201):raise ValueError('upload')
             call('finish',**json.loads((folder/'title.json').read_text(encoding='utf-8')))
+            print(f'Audio import completed in {time.monotonic()-started:.1f}s.', flush=True)
     except (TimeoutError,subprocess.TimeoutExpired):
         call('fail',error='timeout')
     except Exception:
